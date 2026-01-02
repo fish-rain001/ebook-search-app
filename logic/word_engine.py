@@ -158,5 +158,92 @@ def get_topic_content(doc_path, column, topic):
 
     return content
 
+def full_text_search(doc_path, keyword):
+    """
+    完全复刻 Tkinter search_content 的文档扫描逻辑
+    """
+    if not keyword:
+        return {
+            "topics": [],
+            "contents": [],
+            "tables": []
+        }
+
+    doc = Document(doc_path)
+
+    skip = True
+    current_column = ""
+    current_topic = ""
+
+    topic_hits = []
+    content_hits = []
+    table_hits = []
+
+    # ========= 段落扫描 =========
+    for para in doc.paragraphs:
+        text = para.text.strip()
+        style = para.style.name
+
+        if re.match(r'0{60,}', text):
+            skip = False
+            continue
+        if skip or not text:
+            continue
+
+        # 标题1：专栏
+        if is_heading1(para):
+            current_column = text
+            if keyword.lower() in text.lower():
+                topic_hits.append({
+                    "column": current_column,
+                    "topic": None,
+                    "hit": text,
+                    "type": "column"
+                })
+            continue
+
+        # 标题2：主题
+        if is_heading2(para):
+            current_topic = text
+            if keyword.lower() in text.lower():
+                topic_hits.append({
+                    "column": current_column,
+                    "topic": current_topic,
+                    "hit": text,
+                    "type": "topic"
+                })
+            continue
+
+        # 正文
+        if is_normal_text(para):
+            if keyword.lower() in text.lower():
+                content_hits.append({
+                    "column": current_column,
+                    "topic": current_topic,
+                    "content": text,
+                    "type": "text"
+                })
+
+    # ========= 表格扫描 =========
+    for table in doc.tables:
+        for r_idx, row in enumerate(table.rows):
+            for c_idx, cell in enumerate(row.cells):
+                cell_text = cell.text.strip()
+                if keyword.lower() in cell_text.lower():
+                    rows = [[c.text.strip() for c in r.cells] for r in table.rows]
+                    table_hits.append({
+                        "column": current_column,
+                        "topic": current_topic,
+                        "content": rows,
+                        "location": f"表格 第{r_idx+1}行 第{c_idx+1}列",
+                        "type": "table"
+                    })
+                    break
+
+    return {
+        "topics": topic_hits,
+        "contents": content_hits,
+        "tables": table_hits
+    }
 
 
