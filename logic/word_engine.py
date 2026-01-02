@@ -68,7 +68,7 @@ def parse_columns(doc_path):
     """
     返回：
     {
-        "一、XXX": [paragraph_index, ...],
+        "一、XXX": 段落索引,
         ...
     }
     """
@@ -107,7 +107,7 @@ def parse_topics(doc_path, column_title):
 
 def get_topic_content(doc_path, column_title, topic_title):
     """
-    返回某主题下的正文（含段落 + 表格）
+    返回某主题下的正文（段落）
     """
     doc = load_document(doc_path)
     columns = parse_columns(doc_path)
@@ -153,24 +153,11 @@ def search_keyword(year, issue, keyword):
             results.append(p.text.strip())
 
     return results
+
 # =========================
 # 表格解析
 # =========================
 def extract_tables(doc_path):
-    """
-    提取文档中所有表格
-    返回：
-    [
-        {
-            "index": 1,
-            "rows": [
-                ["单元格1", "单元格2", ...],
-                ...
-            ]
-        },
-        ...
-    ]
-    """
     doc = load_document(doc_path)
     tables_data = []
 
@@ -179,7 +166,6 @@ def extract_tables(doc_path):
         for row in table.rows:
             row_data = []
             for cell in row.cells:
-                # 去掉多余换行
                 text = cell.text.replace("\n", " ").strip()
                 row_data.append(text)
             rows.append(row_data)
@@ -191,11 +177,7 @@ def extract_tables(doc_path):
 
     return tables_data
 
-
 def extract_tables_in_topic(doc_path, column_title, topic_title):
-    """
-    提取某一主题范围内出现的表格
-    """
     doc = load_document(doc_path)
 
     columns = parse_columns(doc_path)
@@ -221,11 +203,10 @@ def extract_tables_in_topic(doc_path, column_title, topic_title):
         return []
 
     tables = []
-
     for table in doc.tables:
-        # Word API 不直接告诉表格位置
-        # 我们用表格前后文本近似判断
-        table_text = " ".join(cell.text for row in table.rows for cell in row.cells)
+        table_text = " ".join(
+            cell.text for row in table.rows for cell in row.cells
+        )
         if table_text:
             tables.append(table)
 
@@ -240,29 +221,16 @@ def extract_tables_in_topic(doc_path, column_title, topic_title):
         })
 
     return result
+
 # =========================
-# 结构化搜索（带专栏 / 主题 / 上下文）
+# 结构化搜索
 # =========================
 def structured_search(doc_path, keyword, context_window=2):
-    """
-    返回：
-    [
-        {
-            "column": "一、XXX",
-            "topic": "（一）XXX",
-            "paragraph": "命中段落",
-            "context": ["前文", "命中", "后文"]
-        },
-        ...
-    ]
-    """
     if not keyword:
         return []
 
     doc = load_document(doc_path)
-    columns = parse_columns(doc_path)
 
-    # 构建段落 -> 专栏 / 主题映射
     para_map = []
     current_column = None
     current_topic = None
@@ -302,4 +270,5 @@ def structured_search(doc_path, keyword, context_window=2):
             })
 
     return results
+
 
