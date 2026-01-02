@@ -9,70 +9,33 @@ st.set_page_config(
 st.title("📚 电子书专栏检索系统")
 
 # =========================
-# Session State
-# =========================
-for k in ["year", "issue", "topic"]:
-    if k not in st.session_state:
-        st.session_state[k] = None
-
-# =========================
-# 左侧：文档选择
+# 左侧选择
 # =========================
 with st.sidebar:
     st.header("📂 文档选择")
 
     years = we.list_years()
-    st.session_state.year = st.selectbox("年份", years)
+    year = st.selectbox("年份", years)
 
-    issues = we.list_issues(st.session_state.year)
-    st.session_state.issue = st.selectbox("期刊", issues)
+    issues = we.list_issues(year)
+    issue = st.selectbox("期刊", issues)
 
-    doc_path = we.find_doc_path(
-        st.session_state.year,
-        st.session_state.issue
-    )
+    doc_path = we.find_doc_path(year, issue)
 
 # =========================
-# 专栏（来自文件名）
+# 专栏 → 主题 → 正文
 # =========================
-columns = we.parse_columns_from_filename(doc_path)
-st.markdown("### 🗂 专栏")
-st.write(" / ".join(columns))
+columns = we.list_columns(doc_path)
+column = st.selectbox("选择专栏（标题 1）", columns)
 
-# =========================
-# Tabs
-# =========================
-tab_read, tab_search = st.tabs(["📖 阅读", "🔍 搜索"])
+topics = we.list_topics(doc_path, column)
+topic = st.selectbox("选择主题（标题 2）", topics)
 
-# =========================
-# 阅读
-# =========================
-with tab_read:
-    topics = we.parse_topics(doc_path)
-    titles = [t["title"] for t in topics]
+st.markdown("---")
+st.markdown(f"### {topic}")
 
-    topic_title = st.selectbox("选择主题", titles)
-    topic = next(t for t in topics if t["title"] == topic_title)
-
-    content = we.get_topic_content(doc_path, topic["index"])
-
-    st.markdown("---")
-    for p in content:
-        st.write(p)
-
-# =========================
-# 搜索
-# =========================
-with tab_search:
-    keyword = st.text_input("关键词")
-
-    if st.button("搜索"):
-        results = we.structured_search(doc_path, keyword)
-
-        for r in results:
-            with st.expander(f"{r['topic']}"):
-                st.write(r["paragraph"])
-                for c in r["context"]:
-                    st.write(c)
+content = we.get_topic_content(doc_path, column, topic)
+for p in content:
+    st.write(p)
 
 
