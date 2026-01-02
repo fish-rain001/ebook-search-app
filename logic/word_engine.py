@@ -38,112 +38,152 @@ def load_document(doc_path):
     return Document(doc_path)
 
 # =========================
-# 定位正文起点（跳过 0000...）
+# 跳过无效前缀（0000...）
 # =========================
-def find_content_start_index(doc):
-    """
-    从出现大量 0 的段落之后，才开始读取正文
-    """
-    for i, p in enumerate(doc.paragraphs):
-        if p.text and set(p.text.strip()) == {"0"} and len(p.text.strip()) > 20:
-            return i + 1
-    return 0
+def is_garbage_prefix(p):
+    text = p.text.strip()
+    return text and set(text) == {"0"} and len(text) > 20
 
 # =========================
-# 解析结构（核心）
+# 标题判断（替换原正则）
 # =========================
-def parse_structure(doc_path):
-    """
-    返回结构：
-    {
-        专栏名: [
-            {
-                "title": 主题名,
-                "start": 段落起始索引,
-                "end": 段落结束索引
-            },
-            ...
-        ],
-        ...
-    }
-    """
+def is_column_title(p):
+    return p.style and p.style.name == "Heading 1"
+
+def is_topic_title(p):
+    return p.style and p.style.name == "Heading 2"
+
+# =========================
+# 专栏解析（完全按你原逻辑）
+# =========================
+def parse_columns(doc_path):
     doc = load_document(doc_path)
-    start_idx = find_content_start_index(doc)
+    columns = []
 
-    structure = {}
+    started = False
+    for p in doc.paragraphs:
+        if not started:
+            if is_garbage_prefix(p):
+                started = True
+            continue
+
+        if is_column_title(p):
+            columns.append(p.text.strip())
+
+    return columns
+
+# =========================
+# 主题解析（按专栏范围）
+# =========================
+def parse_topics(doc_path, column_title):
+    doc = load_document(doc_path)
+
+    started = False
+    current_column = None
+    topics = []
+
+    for p in doc.paragraphs:
+        if not started:
+            if is_garbage_prefix(p):
+                started = True
+            continue
+
+        if is_column_title(p):
+            current_column = p.text.strip()
+            continue
+
+        if current_column == column_title and is_topic_title(p):
+            topics.append(p.text.strip())
+
+    return topics
+
+# =========================
+# 获取主题正文（流式）
+# =========================
+def get_topic_content(doc_path, column_title, topic_title):
+    doc = load_document(doc_path)
+
+    started = False
     current_column = None
     current_topic = None
-
-    paragraphs = doc.paragraphs
-
-    for i in range(start_idx, len(paragraphs)):
-        p = paragraphs[i]
-        text = p.text.strip()
-        if not text:
-            continue
-
-        style = p.style.name if p.style else ""
-
-        # 标题1 → 专栏
-        if style == "Heading 1":
-            current_column = text
-            structure[current_column] = []
-            current_topic = None
-
-        # 标题2 → 主题
-        elif style == "Heading 2" and current_column:
-            topic = {
-                "title": text,
-                "start": i,
-                "end": None
-            }
-            structure[current_column].append(topic)
-            current_topic = topic
-
-        # 普通正文
-        else:
-            continue
-
-    # 补齐每个主题的 end
-    for col, topics in structure.items():
-        for idx, t in enumerate(topics):
-            if idx < len(topics) - 1:
-                t["end"] = topics[idx + 1]["start"]
-            else:
-                t["end"] = len(paragraphs)
-
-    return structure
-
-# =========================
-# 对外接口
-# =========================
-def list_columns(doc_path):
-    return list(parse_structure(doc_path).keys())
-
-def list_topics(doc_path, column):
-    structure = parse_structure(doc_path)
-    return [t["title"] for t in structure.get(column, [])]
-
-def get_topic_content(doc_path, column, topic_title):
-    doc = load_document(doc_path)
-    structure = parse_structure(doc_path)
-
-    topics = structure.get(column, [])
-    topic = next(
-        (t for t in topics if t["title"] == topic_title),
-        None
-    )
-    if not topic:
-        return []
-
     content = []
-    for p in doc.paragraphs[topic["start"] + 1: topic["end"]]:
-        if p.style.name.startswith("Heading"):
+
+    for p in doc.paragraphs:
+        if not started:
+            if is_garbage_prefix(p):
+                started = True
             continue
-        if p.text.strip():
+
+        if is_column_title(p):
+            current_column = p.text.strip()
+            current_topic = None
+            continue
+
+        if is_topic_title(p):
+            current_topic = p.text.strip()
+            continue
+
+        if (
+            current_column == column_title
+            and current_topic == topic_title
+            and p.text.strip()
+        ):
             content.append(p.text.strip())
 
     return content
+
+# =========================
+# 结构化搜索（同原思路）
+# =========================
+def structured_search(doc_path, keyword, context_window=2):
+    if not keyword:
+        return []
+
+    doc = load_document(doc_path)
+
+    started = False
+    current_column = None
+    current_topic = None
+    para_map = []
+
+    for idx, p in enumerate(doc.paragraphs):
+        if not started:
+            if is_garbage_prefix(p):
+                started = True
+            continue
+
+        if is_column_title(p):
+            current_column = p.text.strip()
+            current_topic = None
+            continue
+
+        if is_topic_title(p):
+            current_topic = p.text.strip()
+            continue
+
+        if p.text.strip():
+            para_map.append({
+                "index": idx,
+                "text": p.text.strip(),
+                "column": current_column,
+                "topic": current_topic
+            })
+
+    results = []
+    for i, item in enumerate(para_map):
+        if keyword in item["text"]:
+            start = max(0, i - context_window)
+            end = min(len(para_map), i + context_window + 1)
+            context = [para_map[j]["text"] for j in range(start, end)]
+
+            results.append({
+                "column": item["column"],
+                "topic": item["topic"],
+                "paragraph": item["text"],
+                "context": context
+            })
+
+    return results
 
 
 
