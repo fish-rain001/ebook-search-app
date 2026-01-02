@@ -184,6 +184,15 @@ def structured_search(doc_path, keyword, context_window=2):
             })
 
     return results
+# =========================
+# 对外接口：专栏列表
+# =========================
+def list_columns(doc_path):
+    """
+    返回所有专栏（Heading 1）
+    """
+    return parse_columns(doc_path)
+
 
 
 
