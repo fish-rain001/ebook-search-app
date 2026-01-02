@@ -1,8 +1,9 @@
 import streamlit as st
 import threading
 
-import word_engine as we
-import ai_engine as ai
+from logic import word_engine as we
+from logic import ai_engine as ai
+
 
 # =========================
 # 页面配置
