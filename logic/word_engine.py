@@ -26,249 +26,144 @@ def list_issues(year):
     if not os.path.exists(year_dir):
         return []
 
-    issues = set()
+    issues = []
     for f in os.listdir(year_dir):
         if f.endswith(".docx"):
-            m = re.search(r"(第.+?期)", f)
-            if m:
-                issues.add(m.group(1))
-    return sorted(list(issues))
+            issues.append(f)
+    return sorted(issues)
 
 def find_doc_path(year, issue):
-    year_dir = os.path.join(BOOK_DIR, f"{year}年")
-    files = glob.glob(os.path.join(year_dir, f"*{issue}*.docx"))
-    return files[0] if files else None
+    return os.path.join(BOOK_DIR, f"{year}年", issue)
 
 # =========================
-# Word 结构解析
+# Word 加载
 # =========================
 def load_document(doc_path):
     return Document(doc_path)
 
-def is_column_title(p):
-    """
-    专栏标题：一、二、三……
-    """
-    return bool(re.match(r"[一二三四五六七八九十]+、", p.text.strip()))
-
-def is_topic_title(p):
-    """
-    主题标题：（一）（二） 或 1. 2.
-    """
-    t = p.text.strip()
-    return (
-        bool(re.match(r"（[一二三四五六七八九十]+）", t)) or
-        bool(re.match(r"\d+[\.\、]", t))
-    )
-
 # =========================
-# 专栏 / 主题解析
+# 专栏：来自文件名
 # =========================
-def parse_columns(doc_path):
+def parse_columns_from_filename(doc_path):
     """
-    返回：
-    {
-        "一、XXX": 段落索引,
-        ...
-    }
+    例：
+    第二期：会议报道；国际交流；会员动态；通知.docx
     """
-    doc = load_document(doc_path)
-    columns = {}
+    name = os.path.basename(doc_path)
+    name = os.path.splitext(name)[0]
 
-    for i, p in enumerate(doc.paragraphs):
-        if is_column_title(p):
-            columns[p.text.strip()] = i
-
-    return columns
-
-def parse_topics(doc_path, column_title):
-    """
-    返回该专栏下的所有主题
-    """
-    doc = load_document(doc_path)
-    columns = parse_columns(doc_path)
-
-    if column_title not in columns:
+    if "：" not in name:
         return []
 
-    start = columns[column_title]
-    next_columns = [
-        idx for title, idx in columns.items()
-        if idx > start
-    ]
-    end = min(next_columns) if next_columns else len(doc.paragraphs)
+    _, cols = name.split("：", 1)
+    return [c.strip() for c in cols.split("；") if c.strip()]
 
+# =========================
+# 主题：来自 Word 标题
+# =========================
+def is_topic_title(p):
+    text = p.text.strip()
+    style = p.style.name if p.style else ""
+
+    return (
+        style.startswith("Heading")
+        or bool(re.match(r"（[一二三四五六七八九十]+）", text))
+        or bool(re.match(r"\d+[\.\、]", text))
+    )
+
+def parse_topics(doc_path):
+    doc = load_document(doc_path)
     topics = []
-    for p in doc.paragraphs[start:end]:
+
+    for i, p in enumerate(doc.paragraphs):
         if is_topic_title(p):
-            topics.append(p.text.strip())
+            topics.append({
+                "title": p.text.strip(),
+                "index": i
+            })
 
     return topics
 
-def get_topic_content(doc_path, column_title, topic_title):
-    """
-    返回某主题下的正文（段落）
-    """
+# =========================
+# 获取主题正文
+# =========================
+def get_topic_content(doc_path, topic_index):
     doc = load_document(doc_path)
-    columns = parse_columns(doc_path)
+    paragraphs = doc.paragraphs
 
-    start_col = columns[column_title]
-    next_cols = [i for i in columns.values() if i > start_col]
-    end_col = min(next_cols) if next_cols else len(doc.paragraphs)
+    start = topic_index
+    end = len(paragraphs)
 
-    topic_start = None
-    topic_end = end_col
-
-    for i in range(start_col, end_col):
-        p = doc.paragraphs[i]
-        if p.text.strip() == topic_title:
-            topic_start = i
-        elif topic_start and is_topic_title(p):
-            topic_end = i
+    for i in range(start + 1, len(paragraphs)):
+        if is_topic_title(paragraphs[i]):
+            end = i
             break
 
-    if topic_start is None:
-        return []
-
     content = []
-    for p in doc.paragraphs[topic_start + 1: topic_end]:
+    for p in paragraphs[start + 1:end]:
         if p.text.strip():
-            content.append(p.text)
+            content.append(p.text.strip())
 
     return content
 
 # =========================
-# 全文搜索
-# =========================
-def search_keyword(year, issue, keyword):
-    doc_path = find_doc_path(year, issue)
-    if not doc_path or not keyword:
-        return []
-
-    doc = load_document(doc_path)
-    results = []
-
-    for p in doc.paragraphs:
-        if keyword in p.text:
-            results.append(p.text.strip())
-
-    return results
-
-# =========================
-# 表格解析
+# 表格（整篇提取）
 # =========================
 def extract_tables(doc_path):
     doc = load_document(doc_path)
-    tables_data = []
+    tables = []
 
     for idx, table in enumerate(doc.tables, start=1):
         rows = []
         for row in table.rows:
-            row_data = []
-            for cell in row.cells:
-                text = cell.text.replace("\n", " ").strip()
-                row_data.append(text)
-            rows.append(row_data)
-
-        tables_data.append({
-            "index": idx,
-            "rows": rows
-        })
-
-    return tables_data
-
-def extract_tables_in_topic(doc_path, column_title, topic_title):
-    doc = load_document(doc_path)
-
-    columns = parse_columns(doc_path)
-    if column_title not in columns:
-        return []
-
-    start_col = columns[column_title]
-    next_cols = [i for i in columns.values() if i > start_col]
-    end_col = min(next_cols) if next_cols else len(doc.paragraphs)
-
-    topic_start = None
-    topic_end = end_col
-
-    for i in range(start_col, end_col):
-        p = doc.paragraphs[i]
-        if p.text.strip() == topic_title:
-            topic_start = i
-        elif topic_start and is_topic_title(p):
-            topic_end = i
-            break
-
-    if topic_start is None:
-        return []
-
-    tables = []
-    for table in doc.tables:
-        table_text = " ".join(
-            cell.text for row in table.rows for cell in row.cells
-        )
-        if table_text:
-            tables.append(table)
-
-    result = []
-    for idx, table in enumerate(tables, start=1):
-        rows = []
-        for row in table.rows:
             rows.append([cell.text.strip() for cell in row.cells])
-        result.append({
+        tables.append({
             "index": idx,
             "rows": rows
         })
 
-    return result
+    return tables
 
 # =========================
-# 结构化搜索
+# 全文结构化搜索
 # =========================
 def structured_search(doc_path, keyword, context_window=2):
     if not keyword:
         return []
 
     doc = load_document(doc_path)
-
-    para_map = []
-    current_column = None
-    current_topic = None
-
-    for idx, p in enumerate(doc.paragraphs):
-        text = p.text.strip()
-        if not text:
-            continue
-
-        if is_column_title(p):
-            current_column = text
-            current_topic = None
-        elif is_topic_title(p):
-            current_topic = text
-
-        para_map.append({
-            "index": idx,
-            "text": text,
-            "column": current_column,
-            "topic": current_topic
-        })
-
     results = []
 
-    for i, item in enumerate(para_map):
-        if keyword in item["text"]:
-            start = max(0, i - context_window)
-            end = min(len(para_map), i + context_window + 1)
+    topics = parse_topics(doc_path)
 
-            context = [para_map[j]["text"] for j in range(start, end)]
+    for i, p in enumerate(doc.paragraphs):
+        if keyword not in p.text:
+            continue
 
-            results.append({
-                "column": item["column"],
-                "topic": item["topic"],
-                "paragraph": item["text"],
-                "context": context
-            })
+        current_topic = None
+        for t in topics:
+            if t["index"] <= i:
+                current_topic = t
+            else:
+                break
+
+        start = max(0, i - context_window)
+        end = min(len(doc.paragraphs), i + context_window + 1)
+
+        context = [
+            doc.paragraphs[j].text.strip()
+            for j in range(start, end)
+            if doc.paragraphs[j].text.strip()
+        ]
+
+        results.append({
+            "topic": current_topic["title"] if current_topic else None,
+            "paragraph": p.text.strip(),
+            "context": context,
+            "topic_index": current_topic["index"] if current_topic else None
+        })
 
     return results
+
 
 
