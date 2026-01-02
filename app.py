@@ -110,12 +110,28 @@ with tab_search:
                 st.success(f"共找到 {len(results)} 条结果")
 
                 for i, r in enumerate(results, 1):
-                    with st.expander(
-                        f"{i}. {r['section']} → {r.get('topic','')}"
-                    ):
-                        st.markdown(f"**类型**：{r['type']}")
-                        st.markdown(f"**命中内容**：")
-                        st.write(r["content"])
+                
+                    # 情况 1：返回的是字典（你原来的结构化搜索）
+                    if isinstance(r, dict):
+                        title_parts = []
+                        if "column" in r:
+                            title_parts.append(r["column"])
+                        if "topic" in r and r["topic"]:
+                            title_parts.append(r["topic"])
+                
+                        title = " → ".join(title_parts) if title_parts else "搜索结果"
+                
+                        with st.expander(f"{i}. {title}"):
+                            if "content" in r:
+                                st.write(r["content"])
+                            else:
+                                st.write(r)
+                
+                    # 情况 2：返回的是纯文本（Tkinter 版常见）
+                    else:
+                        with st.expander(f"{i}. 搜索结果"):
+                            st.write(r)
+                
 
 # ==================================================
 # 🤖 Tab 3：AI 分析（非阻塞）
