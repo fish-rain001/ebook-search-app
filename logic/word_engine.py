@@ -193,6 +193,14 @@ def list_columns(doc_path):
     """
     return parse_columns(doc_path)
 
+# =========================
+# 对外接口：主题列表
+# =========================
+def list_topics(doc_path, column_title):
+    """
+    返回指定专栏（Heading 1）下的所有主题（Heading 2）
+    """
+    return parse_topics(doc_path, column_title)
 
 
 
