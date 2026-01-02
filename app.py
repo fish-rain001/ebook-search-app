@@ -1,17 +1,18 @@
 import streamlit as st
-from logic import word_engine as we
-from logic import ai_engine as ai
-import os
+import threading
+
+import word_engine as we
+import ai_engine as ai
 
 # =========================
 # 页面配置
 # =========================
 st.set_page_config(
-    page_title="电子书系统",
+    page_title="电子书专栏检索系统",
     layout="wide"
 )
 
-st.title("📚 电子书专栏 / 全文检索 / AI 分析系统")
+st.title("📚 电子书专栏检索系统（Streamlit）")
 
 # =========================
 # 左侧：文档选择
@@ -28,108 +29,136 @@ with st.sidebar:
 
     issues = we.list_issues(year)
     if not issues:
-        st.warning("该年份下没有期刊")
+        st.warning("该年份下未发现 Word 文件")
         st.stop()
 
     issue = st.selectbox("选择期刊", issues)
 
     doc_path = we.find_doc_path(year, issue)
-    if not doc_path or not os.path.exists(doc_path):
-        st.error("未找到 Word 文件")
+    if not doc_path:
+        st.error("未找到对应 Word 文档")
         st.stop()
-
-    st.success(os.path.basename(doc_path))
 
 # =========================
 # Tabs
 # =========================
 tab_read, tab_search, tab_ai = st.tabs(
-    ["📖 专栏阅读", "🔍 全文检索", "🤖 AI 分析"]
+    ["📖 专栏 / 主题阅读", "🔍 全文搜索", "🤖 AI 分析"]
 )
 
 # ==================================================
-# 📖 专栏 / 主题阅读（严格按你原始逻辑）
+# 📖 Tab 1：专栏 → 主题 → 内容
 # ==================================================
 with tab_read:
     st.subheader("📖 按专栏 / 主题阅读")
 
-    columns_dict = we.parse_columns(doc_path)
-
-    if not columns_dict:
-        st.warning("未识别到专栏结构")
+    columns = we.list_columns(doc_path)
+    if not columns:
+        st.warning("文档中未识别到【标题1】专栏")
         st.stop()
-
-    column_titles = list(columns_dict.keys())
 
     col1, col2 = st.columns([1, 2])
 
     with col1:
-        column_title = st.selectbox("选择专栏", column_titles)
+        column = st.selectbox("选择专栏", columns)
 
-    topics = we.parse_topics(doc_path, column_title)
+    topics = we.list_topics(doc_path, column)
 
     with col2:
         if topics:
-            topic_title = st.selectbox("选择主题", topics)
+            topic = st.selectbox("选择主题", topics)
         else:
-            topic_title = None
-            st.info("该专栏下没有主题")
+            st.info("该专栏下未发现【标题2】主题")
+            topic = None
 
-    if topic_title:
+    if topic:
         st.markdown("---")
-        st.markdown(f"### {topic_title}")
+        st.markdown(f"### {topic}")
 
-        content = we.get_topic_content(
-            doc_path,
-            column_title,
-            topic_title
-        )
+        content = we.get_topic_content(doc_path, column, topic)
 
         if not content:
-            st.info("该主题下没有正文内容")
+            st.info("该主题下无正文内容")
         else:
-            for para in content:
-                st.write(para)
+            for block in content:
+                if isinstance(block, dict) and block.get("type") == "table":
+                    st.table(block["rows"])
+                else:
+                    st.write(block)
 
 # ==================================================
-# 🔍 全文检索（你 Tkinter 的 search_content）
+# 🔍 Tab 2：全文搜索（完全复刻 Tkinter）
 # ==================================================
 with tab_search:
-    st.subheader("🔍 全文关键词搜索")
+    st.subheader("🔍 全文搜索（标题 / 正文 / 表格）")
 
-    keyword = st.text_input("请输入关键词")
+    keyword = st.text_input("输入关键词")
 
     if st.button("开始搜索"):
         if not keyword.strip():
             st.warning("请输入关键词")
         else:
-            result = we.search_keyword(year, issue, keyword)
+            results = we.full_text_search(
+                doc_path=doc_path,
+                keyword=keyword
+            )
 
-            if not result:
+            if not results:
                 st.info("未找到匹配内容")
             else:
-                st.success(f"找到 {len(result)} 条结果")
-                for r in result:
-                    st.write(r)
+                st.success(f"共找到 {len(results)} 条结果")
+
+                for i, r in enumerate(results, 1):
+                    with st.expander(
+                        f"{i}. {r['section']} → {r.get('topic','')}"
+                    ):
+                        st.markdown(f"**类型**：{r['type']}")
+                        st.markdown(f"**命中内容**：")
+                        st.write(r["content"])
 
 # ==================================================
-# 🤖 AI 分析
+# 🤖 Tab 3：AI 分析（非阻塞）
 # ==================================================
 with tab_ai:
     st.subheader("🤖 AI 学术辅助分析")
 
-    text = st.text_area("分析文本", height=260)
-    question = st.text_input("分析问题")
+    source = st.radio(
+        "分析对象",
+        ["当前主题内容", "自定义文本"]
+    )
+
+    if source == "当前主题内容":
+        if "topic" not in locals() or not topic:
+            st.warning("请先在【专栏 / 主题阅读】中选择主题")
+            st.stop()
+        text = "\n".join(
+            t for t in content if isinstance(t, str)
+        )
+    else:
+        text = st.text_area("输入分析文本", height=260)
 
     if st.button("开始 AI 分析"):
         if not text.strip():
-            st.warning("请输入分析文本")
-        elif not question.strip():
-            st.warning("请输入问题")
+            st.warning("内容不能为空")
         else:
-            with st.spinner("AI 分析中…"):
-                answer = ai.ask_ai(question, text)
-                st.markdown("### 💡 AI 分析结果")
-                st.write(answer)
-)
+            placeholder = st.empty()
+
+            def run_ai():
+                try:
+                    summary = ai.summarize_text(text)
+                    keywords = ai.extract_keywords(text)
+                    analysis = ai.analyze_topic(text)
+
+                    placeholder.markdown("### 📌 摘要")
+                    placeholder.write(summary)
+
+                    placeholder.markdown("### 🏷 关键词")
+                    placeholder.write(keywords)
+
+                    placeholder.markdown("### 🧠 学术分析")
+                    placeholder.write(analysis)
+                except Exception as e:
+                    placeholder.error(str(e))
+
+            threading.Thread(target=run_ai).start()
 
