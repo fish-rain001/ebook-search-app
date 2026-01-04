@@ -74,7 +74,7 @@ def cached_global_search(all_docs, keyword):
 
 
 # ==================================================
-# Sidebar：文档选择（完全支持跳转）
+# Sidebar：文档选择（支持跳转）
 # ==================================================
 with st.sidebar:
     st.header("📂 文档选择")
@@ -108,33 +108,27 @@ with st.sidebar:
         st.error("未找到 Word")
         st.stop()
 
-# ==================================================
-# 全局跳转提示（关键）
-# ==================================================
-if st.session_state.force_read:
-    st.info("📖 已跳转到对应期刊 / 专栏 / 主题，请切换到【📖 专栏 / 主题阅读】查看")
 
 # ==================================================
-# Tabs
+# ✅ 可控 Tab（关键修复点）
 # ==================================================
-tab_read, tab_search, tab_ai = st.tabs(
-    ["📖 专栏 / 主题阅读", "🔍 全文搜索", "🤖 AI 分析"]
+tab = st.radio(
+    "功能区",
+    ["📖 专栏 / 主题阅读", "🔍 全文搜索", "🤖 AI 分析"],
+    horizontal=True,
+    index=0 if st.session_state.force_read else 1
 )
 
 
 # ==================================================
-# 📖 阅读（跳转最终落点）
+# 📖 阅读区（跳转最终落点）
 # ==================================================
-with tab_read:
+if tab == "📖 专栏 / 主题阅读":
     st.subheader("📖 按专栏 / 主题阅读")
 
     if st.session_state.force_read:
         st.success("📌 已跳转到搜索命中的位置")
         st.session_state.force_read = False
-    
-        # 自动滚动到内容区域（Streamlit 官方推荐技巧）
-        st.markdown("<a id='read_anchor'></a>", unsafe_allow_html=True)
-
 
     columns = we.list_columns(doc_path)
     if not columns:
@@ -164,7 +158,7 @@ with tab_read:
 
     with c2:
         topic = st.selectbox("选择主题", topics, index=topics.index(topic))
-    st.markdown("<a href='#read_anchor'></a>", unsafe_allow_html=True)
+
     st.markdown(f"### {topic}")
 
     content = we.get_topic_content(doc_path, column, topic)
@@ -179,9 +173,9 @@ with tab_read:
 
 
 # ==================================================
-# 🔍 搜索（带高亮 + 跳转）
+# 🔍 搜索区（高亮 + 跳转）
 # ==================================================
-with tab_search:
+if tab == "🔍 全文搜索":
     st.subheader("🔍 全文搜索")
 
     keyword = st.text_input("输入关键词")
@@ -238,12 +232,15 @@ with tab_search:
 # ==================================================
 # 🤖 AI 分析
 # ==================================================
-with tab_ai:
+if tab == "🤖 AI 分析":
     st.subheader("🤖 AI 学术辅助")
 
     source = st.radio("分析对象", ["当前主题", "自定义文本"])
 
     if source == "当前主题":
+        if "content" not in locals():
+            st.warning("请先选择主题")
+            st.stop()
         text = "\n".join(t for t in content if isinstance(t, str))
     else:
         text = st.text_area("输入文本", height=260)
