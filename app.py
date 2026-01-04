@@ -98,37 +98,100 @@ with tab_search:
         if not keyword.strip():
             st.warning("请输入关键词")
         else:
-            results = we.full_text_search(doc_path, keyword)
-
-            topics = results["topics"]
-            contents = results["contents"]
-            tables = results["tables"]
-
-            total = len(topics) + len(contents) + len(tables)
-
+            all_results = {
+                "topics": [],
+                "contents": [],
+                "tables": []
+            }
+    
+            # =========================
+            # 情况 1：局部搜索（默认）
+            # =========================
+            if not global_mode:
+                results = we.full_text_search(doc_path, keyword)
+    
+                all_results["topics"].extend(results["topics"])
+                all_results["contents"].extend(results["contents"])
+                all_results["tables"].extend(results["tables"])
+    
+            # =========================
+            # 情况 2：全局搜索（所有 Word）
+            # =========================
+            else:
+                book_root = os.path.join("data", "电子书")
+                all_docs = glob.glob(
+                    os.path.join(book_root, "**", "*.docx"),
+                    recursive=True
+                )
+    
+                with st.spinner(f"正在全局搜索 {len(all_docs)} 个 Word 文件..."):
+                    for p in all_docs:
+                        try:
+                            results = we.full_text_search(p, keyword)
+    
+                            # 从路径中解析 年份 / 期刊
+                            year = os.path.basename(os.path.dirname(p))
+                            filename = os.path.basename(p)
+    
+                            for r in results["topics"]:
+                                r["year"] = year
+                                r["issue"] = filename
+                                all_results["topics"].append(r)
+    
+                            for r in results["contents"]:
+                                r["year"] = year
+                                r["issue"] = filename
+                                all_results["contents"].append(r)
+    
+                            for r in results["tables"]:
+                                r["year"] = year
+                                r["issue"] = filename
+                                all_results["tables"].append(r)
+    
+                        except Exception as e:
+                            # 单个文件出错不影响全局
+                            continue
+    
+            # =========================
+            # 结果展示
+            # =========================
+            total = (
+                len(all_results["topics"])
+                + len(all_results["contents"])
+                + len(all_results["tables"])
+            )
+    
             if total == 0:
                 st.info("未找到匹配内容")
             else:
                 st.success(f"共找到 {total} 条结果")
-
+    
                 idx = 1
-
-                for r in topics:
-                    with st.expander(f"{idx}. 【标题】{r['column']} → {r.get('topic','')}"):
+    
+                for r in all_results["topics"]:
+                    prefix = f"[{r.get('year','')}] {r.get('issue','')}"
+                    with st.expander(
+                        f"{idx}. 【标题】{prefix} ｜ {r['column']} → {r.get('topic','')}"
+                    ):
                         st.write(r["hit"])
                     idx += 1
-
-                for r in contents:
-                    with st.expander(f"{idx}. 【正文】{r['column']} → {r.get('topic','')}"):
+    
+                for r in all_results["contents"]:
+                    prefix = f"[{r.get('year','')}] {r.get('issue','')}"
+                    with st.expander(
+                        f"{idx}. 【正文】{prefix} ｜ {r['column']} → {r.get('topic','')}"
+                    ):
                         st.write(r["content"])
                     idx += 1
-
-                for r in tables:
+    
+                for r in all_results["tables"]:
+                    prefix = f"[{r.get('year','')}] {r.get('issue','')}"
                     with st.expander(
-                        f"{idx}. 【表格】{r['column']} → {r.get('topic','')}（{r['location']}）"
+                        f"{idx}. 【表格】{prefix} ｜ {r['column']} → {r.get('topic','')}（{r['location']}）"
                     ):
                         st.table(r["content"])
                     idx += 1
+
 
 # ==================================================
 # 🤖 Tab 3：AI 分析（非阻塞）
