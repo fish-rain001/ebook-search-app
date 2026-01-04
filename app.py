@@ -10,15 +10,18 @@ from logic import ai_engine as ai
 
 
 # ==================================================
-# Session 初始化（非常重要）
+# Session 初始化（关键）
 # ==================================================
 for k in [
     "jump_year", "jump_issue",
     "jump_column", "jump_topic",
-    "force_read"
+    "active_tab"
 ]:
     if k not in st.session_state:
         st.session_state[k] = None
+
+if st.session_state.active_tab is None:
+    st.session_state.active_tab = "🔍 全文搜索"
 
 
 # ==================================================
@@ -84,11 +87,7 @@ with st.sidebar:
         st.error("未检测到 data/电子书")
         st.stop()
 
-    year = (
-        st.session_state.jump_year
-        if st.session_state.jump_year in years
-        else years[0]
-    )
+    year = st.session_state.jump_year if st.session_state.jump_year in years else years[0]
     year = st.selectbox("选择年份", years, index=years.index(year))
 
     issues = we.list_issues(year)
@@ -96,11 +95,7 @@ with st.sidebar:
         st.warning("该年份无期刊")
         st.stop()
 
-    issue = (
-        st.session_state.jump_issue
-        if st.session_state.jump_issue in issues
-        else issues[0]
-    )
+    issue = st.session_state.jump_issue if st.session_state.jump_issue in issues else issues[0]
     issue = st.selectbox("选择期刊", issues, index=issues.index(issue))
 
     doc_path = we.find_doc_path(year, issue)
@@ -110,36 +105,28 @@ with st.sidebar:
 
 
 # ==================================================
-# ✅ 可控 Tab（关键修复点）
+# ✅ 可控 Tab（最终正确方案）
 # ==================================================
 tab = st.radio(
     "功能区",
     ["📖 专栏 / 主题阅读", "🔍 全文搜索", "🤖 AI 分析"],
     horizontal=True,
-    index=0 if st.session_state.force_read else 1
+    key="active_tab"
 )
 
 
 # ==================================================
-# 📖 阅读区（跳转最终落点）
+# 📖 阅读区
 # ==================================================
 if tab == "📖 专栏 / 主题阅读":
     st.subheader("📖 按专栏 / 主题阅读")
-
-    if st.session_state.force_read:
-        st.success("📌 已跳转到搜索命中的位置")
-        st.session_state.force_read = False
 
     columns = we.list_columns(doc_path)
     if not columns:
         st.warning("未识别到专栏")
         st.stop()
 
-    column = (
-        st.session_state.jump_column
-        if st.session_state.jump_column in columns
-        else columns[0]
-    )
+    column = st.session_state.jump_column if st.session_state.jump_column in columns else columns[0]
 
     c1, c2 = st.columns([1, 2])
     with c1:
@@ -150,11 +137,7 @@ if tab == "📖 专栏 / 主题阅读":
         st.info("该专栏无主题")
         st.stop()
 
-    topic = (
-        st.session_state.jump_topic
-        if st.session_state.jump_topic in topics
-        else topics[0]
-    )
+    topic = st.session_state.jump_topic if st.session_state.jump_topic in topics else topics[0]
 
     with c2:
         topic = st.selectbox("选择主题", topics, index=topics.index(topic))
@@ -162,18 +145,15 @@ if tab == "📖 专栏 / 主题阅读":
     st.markdown(f"### {topic}")
 
     content = we.get_topic_content(doc_path, column, topic)
-    if not content:
-        st.info("该主题无正文")
-    else:
-        for block in content:
-            if isinstance(block, dict) and "table" in block:
-                st.table(block["table"])
-            else:
-                st.write(block)
+    for block in content:
+        if isinstance(block, dict) and "table" in block:
+            st.table(block["table"])
+        else:
+            st.write(block)
 
 
 # ==================================================
-# 🔍 搜索区（高亮 + 跳转）
+# 🔍 搜索区（跳转核心）
 # ==================================================
 if tab == "🔍 全文搜索":
     st.subheader("🔍 全文搜索")
@@ -182,50 +162,27 @@ if tab == "🔍 全文搜索":
     global_mode = st.checkbox("🌍 全局搜索（所有 Word）")
 
     if st.button("开始搜索"):
-        if not keyword.strip():
-            st.warning("请输入关键词")
-            st.stop()
-
         if global_mode:
             root = os.path.join("data", "电子书")
             docs = glob.glob(os.path.join(root, "**", "*.docx"), recursive=True)
-            with st.spinner(f"正在搜索 {len(docs)} 个文档"):
-                results = cached_global_search(docs, keyword)
+            results = cached_global_search(docs, keyword)
         else:
             results = cached_search(doc_path, keyword)
 
-        total = sum(len(results[k]) for k in results)
-        if total == 0:
-            st.info("无匹配结果")
-            st.stop()
-
-        st.success(f"共找到 {total} 条结果")
         idx = 1
-
         for group in ["topics", "contents", "tables"]:
             for r in results[group]:
-                title = f"[{r.get('year','')}] {r.get('issue','')} ｜ {r.get('column','')} → {r.get('topic','')}"
-                with st.expander(f"{idx}. {title}"):
-
-                    if group == "topics":
-                        st.markdown(highlight(r["hit"], keyword), unsafe_allow_html=True)
-                    elif group == "contents":
+                with st.expander(f"{idx}. {r.get('column','')} → {r.get('topic','')}"):
+                    if group == "contents":
                         st.markdown(highlight(r["content"], keyword), unsafe_allow_html=True)
-                    else:
-                        for row in r["content"]:
-                            st.markdown(
-                                " | ".join(highlight(c, keyword) for c in row),
-                                unsafe_allow_html=True
-                            )
 
                     if st.button("📖 跳转阅读", key=f"jump_{idx}"):
                         st.session_state.jump_year = r.get("year")
                         st.session_state.jump_issue = r.get("issue")
                         st.session_state.jump_column = r.get("column")
                         st.session_state.jump_topic = r.get("topic")
-                        st.session_state.force_read = True
+                        st.session_state.active_tab = "📖 专栏 / 主题阅读"
                         st.experimental_rerun()
-
                 idx += 1
 
 
@@ -235,35 +192,13 @@ if tab == "🔍 全文搜索":
 if tab == "🤖 AI 分析":
     st.subheader("🤖 AI 学术辅助")
 
-    source = st.radio("分析对象", ["当前主题", "自定义文本"])
-
-    if source == "当前主题":
-        if "content" not in locals():
-            st.warning("请先选择主题")
-            st.stop()
-        text = "\n".join(t for t in content if isinstance(t, str))
-    else:
-        text = st.text_area("输入文本", height=260)
-
+    text = st.text_area("输入文本", height=260)
     if st.button("开始分析"):
         placeholder = st.empty()
 
         def run_ai():
-            try:
-                placeholder.markdown("### 📌 摘要")
-                placeholder.write(ai.summarize_text(text))
-                placeholder.markdown("### 🏷 关键词")
-                placeholder.write(ai.extract_keywords(text))
-                placeholder.markdown("### 🧠 分析")
-                placeholder.write(ai.analyze_topic(text))
-            except Exception as e:
-                placeholder.error(str(e))
+            placeholder.write(ai.summarize_text(text))
+            placeholder.write(ai.extract_keywords(text))
+            placeholder.write(ai.analyze_topic(text))
 
         threading.Thread(target=run_ai).start()
-
-
-
-
-
-
-
