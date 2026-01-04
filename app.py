@@ -10,12 +10,14 @@ from logic import ai_engine as ai
 
 
 # ==================================================
-# Session 初始化（非常重要）
+# Session 初始化
 # ==================================================
 for k in [
     "jump_year", "jump_issue",
     "jump_column", "jump_topic",
-    "force_read", "current_tab"
+    "selected_year", "selected_issue",
+    "selected_column", "selected_topic",
+    "current_tab"
 ]:
     if k not in st.session_state:
         st.session_state[k] = None
@@ -64,8 +66,8 @@ def cached_global_search(all_docs, keyword):
     for p in all_docs:
         try:
             r = we.full_text_search(p, keyword)
-            year = os.path.basename(os.path.dirname(p))  # 保持原样，返回完整的"2004年"格式
-            issue = os.path.basename(p)  # 保持原样，返回完整的文件名
+            year = os.path.basename(os.path.dirname(p))
+            issue = os.path.basename(p)
             for k in result:
                 for x in r[k]:
                     x["year"] = year
@@ -77,7 +79,7 @@ def cached_global_search(all_docs, keyword):
 
 
 # ==================================================
-# Sidebar：文档选择（支持跳转）
+# Sidebar：文档选择
 # ==================================================
 with st.sidebar:
     st.header("📂 文档选择")
@@ -87,31 +89,41 @@ with st.sidebar:
         st.error("未检测到 data/电子书")
         st.stop()
 
-    # 🔑 优先使用 jump_year，否则用第一个
-    if st.session_state.jump_year and st.session_state.jump_year in years:
-        year = st.session_state.jump_year
+    # 🔑 如果有跳转请求，直接设置选中值
+    if st.session_state.jump_year:
+        st.session_state.selected_year = st.session_state.jump_year
+        st.session_state.jump_year = None
+
+    # 使用 selected_year，否则用第一个
+    if st.session_state.selected_year and st.session_state.selected_year in years:
+        year = st.session_state.selected_year
         year_idx = years.index(year)
-        st.session_state.jump_year = None  # 立即清空，防止重复
     else:
         year = years[0]
         year_idx = 0
 
-    year = st.selectbox("选择年份", years, index=year_idx)
+    year = st.selectbox("选择年份", years, index=year_idx, key="year_select")
+    st.session_state.selected_year = year
 
     issues = we.list_issues(year)
     if not issues:
         st.warning("该年份无期刊")
         st.stop()
 
-    if st.session_state.jump_issue and st.session_state.jump_issue in issues:
-        issue = st.session_state.jump_issue
+    # 🔑 如果有跳转请求，直接设置选中值
+    if st.session_state.jump_issue:
+        st.session_state.selected_issue = st.session_state.jump_issue
+        st.session_state.jump_issue = None
+
+    if st.session_state.selected_issue and st.session_state.selected_issue in issues:
+        issue = st.session_state.selected_issue
         issue_idx = issues.index(issue)
-        st.session_state.jump_issue = None  # 立即清空
     else:
         issue = issues[0]
         issue_idx = 0
 
-    issue = st.selectbox("选择期刊", issues, index=issue_idx)
+    issue = st.selectbox("选择期刊", issues, index=issue_idx, key="issue_select")
+    st.session_state.selected_issue = issue
 
     doc_path = we.find_doc_path(year, issue)
     if not doc_path:
@@ -123,13 +135,8 @@ with st.sidebar:
 # Tab 选择
 # ==================================================
 tab_options = ["📖 专栏 / 主题阅读", "🔍 全文搜索", "🤖 AI 分析"]
-
-# 如果强制读取，必须切到第一个 tab
-if st.session_state.force_read:
-    st.session_state.current_tab = 0
-    st.session_state.force_read = False
-
 tab_index = st.session_state.current_tab if st.session_state.current_tab is not None else 0
+
 tab = st.radio(
     "功能区",
     tab_options,
@@ -141,7 +148,7 @@ st.session_state.current_tab = tab_options.index(tab)
 
 
 # ==================================================
-# 📖 阅读区（跳转最终落点）
+# 📖 阅读区
 # ==================================================
 if tab == "📖 专栏 / 主题阅读":
     st.subheader("📖 按专栏 / 主题阅读")
@@ -151,34 +158,43 @@ if tab == "📖 专栏 / 主题阅读":
         st.warning("未识别到专栏")
         st.stop()
 
-    # 🔑 直接使用 jump_column，避免 selectbox 的复杂逻辑
-    if st.session_state.jump_column and st.session_state.jump_column in columns:
-        column = st.session_state.jump_column
-        column_idx = columns.index(column)
+    # 🔑 如果有跳转请求，直接设置选中值
+    if st.session_state.jump_column:
+        st.session_state.selected_column = st.session_state.jump_column
         st.session_state.jump_column = None
+
+    if st.session_state.selected_column and st.session_state.selected_column in columns:
+        column = st.session_state.selected_column
+        column_idx = columns.index(column)
     else:
         column = columns[0]
         column_idx = 0
 
     c1, c2 = st.columns([1, 2])
     with c1:
-        column = st.selectbox("选择专栏", columns, index=column_idx)
+        column = st.selectbox("选择专栏", columns, index=column_idx, key="column_select")
+    st.session_state.selected_column = column
 
     topics = we.list_topics(doc_path, column)
     if not topics:
         st.info("该专栏无主题")
         st.stop()
 
-    if st.session_state.jump_topic and st.session_state.jump_topic in topics:
-        topic = st.session_state.jump_topic
-        topic_idx = topics.index(topic)
+    # 🔑 如果有跳转请求，直接设置选中值
+    if st.session_state.jump_topic:
+        st.session_state.selected_topic = st.session_state.jump_topic
         st.session_state.jump_topic = None
+
+    if st.session_state.selected_topic and st.session_state.selected_topic in topics:
+        topic = st.session_state.selected_topic
+        topic_idx = topics.index(topic)
     else:
         topic = topics[0]
         topic_idx = 0
 
     with c2:
-        topic = st.selectbox("选择主题", topics, index=topic_idx)
+        topic = st.selectbox("选择主题", topics, index=topic_idx, key="topic_select")
+    st.session_state.selected_topic = topic
 
     st.markdown(f"### {topic}")
 
@@ -194,7 +210,7 @@ if tab == "📖 专栏 / 主题阅读":
 
 
 # ==================================================
-# 🔍 搜索区（高亮 + 跳转）
+# 🔍 搜索区
 # ==================================================
 elif tab == "🔍 全文搜索":
     st.subheader("🔍 全文搜索")
@@ -221,19 +237,16 @@ elif tab == "🔍 全文搜索":
             st.stop()
 
         st.success(f"共找到 {total} 条结果")
-        
-        # 🔑 先收集所有结果到列表
+
         all_results = []
         for group in ["topics", "contents", "tables"]:
             for r in results[group]:
                 all_results.append((group, r))
-        
-        # 显示结果
+
         for idx, (group, r) in enumerate(all_results, 1):
             title = f"[{r.get('year','')}] {r.get('issue','')} ｜ {r.get('column','')} → {r.get('topic','')}"
-            
+
             with st.expander(f"{idx}. {title}"):
-                # 显示内容
                 if group == "topics":
                     st.markdown(highlight(r["hit"], keyword), unsafe_allow_html=True)
                 elif group == "contents":
@@ -244,57 +257,30 @@ elif tab == "🔍 全文搜索":
                             " | ".join(highlight(c, keyword) for c in row),
                             unsafe_allow_html=True
                         )
-                
-                # 分开一行放按钮和调试
+
                 col1, col2 = st.columns([1, 4])
-                
+
                 with col1:
                     if st.button("📖 跳转", key=f"jump_btn_{idx}"):
-                        # 🔧 格式转换：从全局搜索结果格式转换到 sidebar 期望的格式
-                        raw_year = r.get("year", "")  # 可能是"2004年"或"2004"
-                        raw_issue = r.get("issue", "")  # 可能是"第一期.docx"或"第一期"
-                        
-                        # 清理 year：去掉"年"字
+                        # 🔧 格式转换
+                        raw_year = r.get("year", "")
+                        raw_issue = r.get("issue", "")
+
                         clean_year = raw_year.replace("年", "")
-                        
-                        # 清理 issue：提取出期刊号（第一期、第2号等）
                         issue_match = re.match(r"(第[一二三四五六七八九十\d]+期|第\d+号)", raw_issue)
                         clean_issue = issue_match.group(1) if issue_match else raw_issue.replace(".docx", "")
-                        
-                        # 🐛 调试信息
-                        st.warning("🔍 跳转调试信息")
-                        st.json({
-                            "原始数据": {
-                                "year": raw_year,
-                                "issue": raw_issue,
-                                "column": r.get("column"),
-                                "topic": r.get("topic")
-                            },
-                            "清理后的数据": {
-                                "year": clean_year,
-                                "issue": clean_issue,
-                                "column": r.get("column"),
-                                "topic": r.get("topic")
-                            },
-                            "可用选项": {
-                                "years": we.list_years(),
-                                "issues": we.list_issues(clean_year)
-                            },
-                            "是否匹配": {
-                                "year_match": clean_year in we.list_years(),
-                                "issue_match": clean_issue in we.list_issues(clean_year)
-                            }
-                        })
-                        
+
+                        # 🔑 设置跳转参数
                         st.session_state.jump_year = clean_year
                         st.session_state.jump_issue = clean_issue
                         st.session_state.jump_column = r.get("column")
                         st.session_state.jump_topic = r.get("topic")
                         st.session_state.current_tab = 0
+                        
                         st.rerun()
-                
+
                 with col2:
-                    st.caption(f"原始数据: year={r.get('year')}, issue={r.get('issue')}, column={r.get('column')}, topic={r.get('topic')}")
+                    st.caption(f"📌 {r.get('column')} → {r.get('topic','')}")
 
 
 # ==================================================
