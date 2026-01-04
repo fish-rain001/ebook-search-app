@@ -1,7 +1,7 @@
 import requests
 
 API_URL = "https://api.deepseek.com/v1/chat/completions"
-API_KEY = "⚠️这里换成你的 key"
+API_KEY = "sk-cc5b3202d72749919ada90c6e67542ae"
 
 def ask_ai(question, context):
     prompt = f"""
@@ -36,5 +36,6 @@ def ask_ai(question, context):
     resp = requests.post(API_URL, json=payload, headers=headers, timeout=60)
     resp.raise_for_status()
     return resp.json()["choices"][0]["message"]["content"]
+
 
 
