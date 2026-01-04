@@ -240,21 +240,24 @@ elif tab == "🔍 全文搜索":
                             )
 
                     if st.button("📖 跳转阅读", key=f"jump_{idx}"):
-                        # 🔑 设置所有跳转参数，然后重新运行
+                        # 🐛 调试：显示原始值
+                        with st.container():
+                            st.warning("⚠️ 调试信息（跳转前）")
+                            st.json({
+                                "raw_year": r.get("year"),
+                                "raw_issue": r.get("issue"),
+                                "raw_column": r.get("column"),
+                                "raw_topic": r.get("topic"),
+                                "available_years": we.list_years(),
+                                "available_issues": we.list_issues(r.get("year", "").replace("年", "")) if r.get("year") else []
+                            })
+                        
+                        # 🔑 设置所有跳转参数
                         st.session_state.jump_year = r.get("year")
                         st.session_state.jump_issue = r.get("issue")
                         st.session_state.jump_column = r.get("column")
                         st.session_state.jump_topic = r.get("topic")
                         st.session_state.force_read = True
-                        
-                        # 🐛 调试信息
-                        st.write("=== 调试信息 ===")
-                        st.write(f"jump_year: {st.session_state.jump_year}")
-                        st.write(f"jump_issue: {st.session_state.jump_issue}")
-                        st.write(f"jump_column: {st.session_state.jump_column}")
-                        st.write(f"jump_topic: {st.session_state.jump_topic}")
-                        st.write(f"force_read: {st.session_state.force_read}")
-                        st.write(f"current_tab: {st.session_state.current_tab}")
                         
                         st.rerun()
 
