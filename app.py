@@ -4,7 +4,6 @@ import threading
 from logic import word_engine as we
 from logic import ai_engine as ai
 
-
 # =========================
 # 页面配置
 # =========================
@@ -82,8 +81,8 @@ with tab_read:
             st.info("该主题下无正文内容")
         else:
             for block in content:
-                if isinstance(block, dict) and block.get("type") == "table":
-                    st.table(block["rows"])
+                if isinstance(block, dict) and "table" in block:
+                    st.table(block["table"])
                 else:
                     st.write(block)
 
@@ -99,39 +98,37 @@ with tab_search:
         if not keyword.strip():
             st.warning("请输入关键词")
         else:
-            results = we.full_text_search(
-                doc_path=doc_path,
-                keyword=keyword
-            )
+            results = we.full_text_search(doc_path, keyword)
 
-            if not results:
+            topics = results["topics"]
+            contents = results["contents"]
+            tables = results["tables"]
+
+            total = len(topics) + len(contents) + len(tables)
+
+            if total == 0:
                 st.info("未找到匹配内容")
             else:
-                st.success(f"共找到 {len(results)} 条结果")
+                st.success(f"共找到 {total} 条结果")
 
-                for i, r in enumerate(results, 1):
-                
-                    # 情况 1：返回的是字典（你原来的结构化搜索）
-                    if isinstance(r, dict):
-                        title_parts = []
-                        if "column" in r:
-                            title_parts.append(r["column"])
-                        if "topic" in r and r["topic"]:
-                            title_parts.append(r["topic"])
-                
-                        title = " → ".join(title_parts) if title_parts else "搜索结果"
-                
-                        with st.expander(f"{i}. {title}"):
-                            if "content" in r:
-                                st.write(r["content"])
-                            else:
-                                st.write(r)
-                
-                    # 情况 2：返回的是纯文本（Tkinter 版常见）
-                    else:
-                        with st.expander(f"{i}. 搜索结果"):
-                            st.write(r)
-                
+                idx = 1
+
+                for r in topics:
+                    with st.expander(f"{idx}. 【标题】{r['column']} → {r.get('topic','')}"):
+                        st.write(r["hit"])
+                    idx += 1
+
+                for r in contents:
+                    with st.expander(f"{idx}. 【正文】{r['column']} → {r.get('topic','')}"):
+                        st.write(r["content"])
+                    idx += 1
+
+                for r in tables:
+                    with st.expander(
+                        f"{idx}. 【表格】{r['column']} → {r.get('topic','')}（{r['location']}）"
+                    ):
+                        st.table(r["content"])
+                    idx += 1
 
 # ==================================================
 # 🤖 Tab 3：AI 分析（非阻塞）
@@ -148,9 +145,7 @@ with tab_ai:
         if "topic" not in locals() or not topic:
             st.warning("请先在【专栏 / 主题阅读】中选择主题")
             st.stop()
-        text = "\n".join(
-            t for t in content if isinstance(t, str)
-        )
+        text = "\n".join(t for t in content if isinstance(t, str))
     else:
         text = st.text_area("输入分析文本", height=260)
 
@@ -177,6 +172,7 @@ with tab_ai:
                 except Exception as e:
                     placeholder.error(str(e))
 
-            threading.Thread(target=run_ai).start()
+            threading.Thread(target=run_ai, daemon=True).start()
+
 
 
