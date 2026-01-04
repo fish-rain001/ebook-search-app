@@ -10,14 +10,12 @@ from logic import ai_engine as ai
 
 
 # ==================================================
-# Session 初始化（跳转 & 状态）
+# Session 初始化
 # ==================================================
 for k in [
-    "jump_year",
-    "jump_issue",
-    "jump_column",
-    "jump_topic",
-    "force_read",
+    "jump_year", "jump_issue",
+    "jump_column", "jump_topic",
+    "force_read"
 ]:
     if k not in st.session_state:
         st.session_state[k] = None
@@ -35,12 +33,11 @@ st.title("📚 电子书专栏检索系统")
 
 
 # ==================================================
-# 工具：关键词高亮
+# 高亮工具
 # ==================================================
 def highlight(text, keyword):
     if not text or not keyword:
         return html.escape(text)
-
     text = html.escape(text)
     return re.sub(
         re.escape(keyword),
@@ -61,26 +58,23 @@ def cached_search(doc_path, keyword):
 @st.cache_data(show_spinner=False)
 def cached_global_search(all_docs, keyword):
     result = {"topics": [], "contents": [], "tables": []}
-
     for p in all_docs:
         try:
             r = we.full_text_search(p, keyword)
             year = os.path.basename(os.path.dirname(p))
             issue = os.path.basename(p)
-
             for k in result:
                 for x in r[k]:
-                    x["year"] = year.replace("年", "")
+                    x["year"] = year
                     x["issue"] = issue
                     result[k].append(x)
         except Exception:
             pass
-
     return result
 
 
 # ==================================================
-# Sidebar：文档选择（支持搜索跳转）
+# Sidebar：文档选择
 # ==================================================
 with st.sidebar:
     st.header("📂 文档选择")
@@ -99,7 +93,7 @@ with st.sidebar:
 
     issues = we.list_issues(year)
     if not issues:
-        st.warning("该年份下没有期刊")
+        st.warning("该年份无期刊")
         st.stop()
 
     issue = (
@@ -111,23 +105,23 @@ with st.sidebar:
 
     doc_path = we.find_doc_path(year, issue)
     if not doc_path:
-        st.error("未找到 Word 文档")
+        st.error("未找到 Word")
         st.stop()
 
 
 # ==================================================
-# Tab 切换（可被搜索强制跳转）
+# 功能区切换
 # ==================================================
 tab = st.radio(
     "功能区",
-    ["📖 专栏 / 主题阅读", "🔍 全文搜索", "🤖 AI 分析"],
+    ["📖 专栏 / 主题阅读", "🔍 全文搜索"],
     horizontal=True,
     index=0 if st.session_state.force_read else 1
 )
 
 
 # ==================================================
-# 📖 阅读区
+# 📖 专栏 / 主题阅读 + AI 分析（合并）
 # ==================================================
 if tab == "📖 专栏 / 主题阅读":
     st.subheader("📖 按专栏 / 主题阅读")
@@ -138,7 +132,7 @@ if tab == "📖 专栏 / 主题阅读":
 
     columns = we.list_columns(doc_path)
     if not columns:
-        st.warning("文档中未识别到专栏（标题1）")
+        st.warning("未识别到专栏")
         st.stop()
 
     column = (
@@ -153,7 +147,7 @@ if tab == "📖 专栏 / 主题阅读":
 
     topics = we.list_topics(doc_path, column)
     if not topics:
-        st.info("该专栏下未发现主题（标题2）")
+        st.info("该专栏无主题")
         st.stop()
 
     topic = (
@@ -168,18 +162,49 @@ if tab == "📖 专栏 / 主题阅读":
     st.markdown(f"### {topic}")
 
     content = we.get_topic_content(doc_path, column, topic)
+
     if not content:
-        st.info("该主题下无正文内容")
-    else:
-        for block in content:
-            if isinstance(block, dict) and "table" in block:
-                st.table(block["table"])
-            else:
-                st.write(block)
+        st.info("该主题无正文")
+        st.stop()
+
+    # ===== 正文展示 =====
+    for block in content:
+        if isinstance(block, dict) and "table" in block:
+            st.table(block["table"])
+        else:
+            st.write(block)
+
+    # ==================================================
+    # 🤖 AI 分析（就在这里）
+    # ==================================================
+    st.markdown("---")
+    st.subheader("🤖 AI 学术分析（基于当前主题）")
+
+    question = st.text_input(
+        "请输入你想让 AI 分析的问题（如：该专栏的核心观点是什么？）"
+    )
+
+    if st.button("开始 AI 分析"):
+        if not question.strip():
+            st.warning("请输入问题")
+        else:
+            text = "\n".join(t for t in content if isinstance(t, str))
+            placeholder = st.empty()
+
+            def run_ai():
+                try:
+                    placeholder.markdown("### 🧠 AI 分析结果")
+                    placeholder.write(
+                        ai.ask_ai(question, text)
+                    )
+                except Exception as e:
+                    placeholder.error(str(e))
+
+            threading.Thread(target=run_ai).start()
 
 
 # ==================================================
-# 🔍 搜索区（支持全局 + 跳转 + 高亮）
+# 🔍 全文搜索
 # ==================================================
 if tab == "🔍 全文搜索":
     st.subheader("🔍 全文搜索")
@@ -202,12 +227,12 @@ if tab == "🔍 全文搜索":
 
         total = sum(len(results[k]) for k in results)
         if total == 0:
-            st.info("未找到匹配内容")
+            st.info("无匹配结果")
             st.stop()
 
         st.success(f"共找到 {total} 条结果")
-
         idx = 1
+
         for group in ["topics", "contents", "tables"]:
             for r in results[group]:
                 title = f"[{r.get('year','')}] {r.get('issue','')} ｜ {r.get('column','')} → {r.get('topic','')}"
@@ -233,38 +258,3 @@ if tab == "🔍 全文搜索":
                         st.experimental_rerun()
 
                 idx += 1
-
-
-# ==================================================
-# 🤖 AI 分析（提问式）
-# ==================================================
-if tab == "🤖 AI 分析":
-    st.subheader("🤖 AI 学术分析（基于当前主题）")
-
-    if "content" not in locals() or not content:
-        st.warning("请先在【专栏 / 主题阅读】中选择一个主题")
-        st.stop()
-
-    question = st.text_input(
-        "请输入你要让 AI 回答的问题",
-        placeholder="例如：这篇文章的核心观点是什么？"
-    )
-
-    context = "\n".join(t for t in content if isinstance(t, str))
-
-    if st.button("🚀 AI 分析"):
-        if not question.strip():
-            st.warning("请输入问题")
-            st.stop()
-
-        placeholder = st.empty()
-
-        def run_ai():
-            try:
-                answer = ai.ask_ai(question, context)
-                placeholder.markdown("### 📊 AI 回答")
-                placeholder.markdown(answer)
-            except Exception as e:
-                placeholder.error(str(e))
-
-        threading.Thread(target=run_ai).start()
