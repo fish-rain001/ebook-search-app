@@ -230,33 +230,92 @@ if tab == "🔍 全文搜索":
 
 
 # ==================================================
-# 🤖 AI 分析
+# 🤖 AI 分析（改进版）
 # ==================================================
 if tab == "🤖 AI 分析":
     st.subheader("🤖 AI 学术辅助")
 
-    source = st.radio("分析对象", ["当前主题", "自定义文本"])
 
-    if source == "当前主题":
-        if "content" not in locals():
-            st.warning("请先选择主题")
+
+    # 第一步：选择分析对象
+    source = st.radio(
+        "分析对象",
+        ["📖 当前主题", "📝 自定义文本"],
+        horizontal=True
+    )
+
+    if source == "📖 当前主题":
+        # 需要先在阅读区选择主题
+        if "content" not in locals() or not content:
+            st.warning("⚠️ 请先在「专栏 / 主题阅读」选择一个主题")
             st.stop()
-        text = "\n".join(t for t in content if isinstance(t, str))
-    else:
-        text = st.text_area("输入文本", height=260)
+        
+        # 显示当前选中的主题信息
+        st.info(f"📌 当前主题：**{st.session_state.jump_topic}**")
+        
+        # 提取内容
+        text = "\n".join(
+            t for t in content 
+            if isinstance(t, str) and t.strip()
+        )
+        
+        if not text:
+            st.warning("该主题暂无文本内容")
+            st.stop()
+        
+        st.text(f"内容长度：{len(text)} 字")
 
-    if st.button("开始分析"):
-        placeholder = st.empty()
+    else:  # 自定义文本
+        text = st.text_area(
+            "输入文本",
+            height=200,
+            placeholder="粘贴要分析的内容..."
+        )
+        if not text.strip():
+            st.info("请输入分析内容")
+            st.stop()
 
-        def run_ai():
+    st.divider()
+
+    # 第二步：输入问题
+    st.subheader("提问")
+    user_question = st.text_input(
+        "向 AI 提出你的问题",
+        placeholder="例如：这个内容的核心观点是什么？",
+        max_chars=500
+    )
+
+    # 第三步：分析按钮
+    col1, col2 = st.columns([1, 4])
+    with col1:
+        analyze_btn = st.button("🚀 AI 分析", use_container_width=True)
+
+    if analyze_btn:
+        if not user_question.strip():
+            st.warning("请输入问题")
+            st.stop()
+
+        # 调用 AI
+        with st.spinner("🤔 AI 正在分析中..."):
             try:
-                placeholder.markdown("### 📌 摘要")
-                placeholder.write(ai.summarize_text(text))
-                placeholder.markdown("### 🏷 关键词")
-                placeholder.write(ai.extract_keywords(text))
-                placeholder.markdown("### 🧠 分析")
-                placeholder.write(ai.analyze_topic(text))
+                from logic import ai_engine as ai
+                
+                # 调用 ask_ai 函数
+                response = ai.ask_ai(user_question, text)
+                
+                st.markdown("### 📋 分析结果")
+                st.markdown(response)
+                
+                # 可选：添加下载按钮
+                st.divider()
+                col1, col2 = st.columns(2)
+                with col1:
+                    st.download_button(
+                        label="📥 下载结果",
+                        data=response,
+                        file_name="ai_analysis.txt",
+                        mime="text/plain"
+                    )
+                
             except Exception as e:
-                placeholder.error(str(e))
-
-        threading.Thread(target=run_ai).start()
+                st.error(f"❌ 分析失败：{str(e)}")
