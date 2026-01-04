@@ -1,124 +1,182 @@
-# app.py
 import streamlit as st
-import os
-import word_engine as we
+import threading
 
-# ======================
-# 基本配置
-# ======================
+from logic import word_engine as we
+from logic import ai_engine as ai
+
+
+# =========================
+# 页面配置
+# =========================
 st.set_page_config(
     page_title="电子书专栏检索系统",
     layout="wide"
 )
 
-BASE_DIR = "电子书"   # ⚠️ 云端可改成 "./data" 或挂载目录
+st.title("📚 电子书专栏检索系统（Streamlit）")
 
-st.title("📚 电子书专栏检索系统（Streamlit 版）")
-
-# ======================
-# Session State
-# ======================
-if "search_result" not in st.session_state:
-    st.session_state.search_result = None
-
-# ======================
-# 左侧：检索条件
-# ======================
+# =========================
+# 左侧：文档选择
+# =========================
 with st.sidebar:
-    st.header("🔎 检索条件")
+    st.header("📂 文档选择")
 
-    years = we.list_years(BASE_DIR)
-    year = st.selectbox("年份", ["所有"] + years)
+    years = we.list_years()
+    if not years:
+        st.error("未检测到 data/电子书 目录")
+        st.stop()
 
-    issues = we.list_issues(BASE_DIR, year)
-    issue = st.selectbox("期刊号", ["所有"] + issues)
+    year = st.selectbox("选择年份", years)
 
-    columns = we.list_columns(BASE_DIR, year, issue)
-    column = st.selectbox("专栏", ["所有"] + columns)
+    issues = we.list_issues(year)
+    if not issues:
+        st.warning("该年份下未发现 Word 文件")
+        st.stop()
 
-    keyword = st.text_input("全文搜索关键词")
+    issue = st.selectbox("选择期刊", issues)
 
-    do_search = st.button("🔍 执行全文搜索")
+    doc_path = we.find_doc_path(year, issue)
+    if not doc_path:
+        st.error("未找到对应 Word 文档")
+        st.stop()
 
-# ======================
-# 执行全文搜索
-# ======================
-if do_search:
-    if not keyword.strip():
-        st.warning("请输入搜索关键词")
-    else:
-        with st.spinner("正在全文检索，请稍候..."):
-            st.session_state.search_result = we.full_text_search(
-                base_dir=BASE_DIR,
-                keyword=keyword.strip(),
-                year=year,
-                issue=issue,
-                column=column
+# =========================
+# Tabs
+# =========================
+tab_read, tab_search, tab_ai = st.tabs(
+    ["📖 专栏 / 主题阅读", "🔍 全文搜索", "🤖 AI 分析"]
+)
+
+# ==================================================
+# 📖 Tab 1：专栏 → 主题 → 内容
+# ==================================================
+with tab_read:
+    st.subheader("📖 按专栏 / 主题阅读")
+
+    columns = we.list_columns(doc_path)
+    if not columns:
+        st.warning("文档中未识别到【标题1】专栏")
+        st.stop()
+
+    col1, col2 = st.columns([1, 2])
+
+    with col1:
+        column = st.selectbox("选择专栏", columns)
+
+    topics = we.list_topics(doc_path, column)
+
+    with col2:
+        if topics:
+            topic = st.selectbox("选择主题", topics)
+        else:
+            st.info("该专栏下未发现【标题2】主题")
+            topic = None
+
+    if topic:
+        st.markdown("---")
+        st.markdown(f"### {topic}")
+
+        content = we.get_topic_content(doc_path, column, topic)
+
+        if not content:
+            st.info("该主题下无正文内容")
+        else:
+            for block in content:
+                if isinstance(block, dict) and block.get("type") == "table":
+                    st.table(block["rows"])
+                else:
+                    st.write(block)
+
+# ==================================================
+# 🔍 Tab 2：全文搜索（完全复刻 Tkinter）
+# ==================================================
+with tab_search:
+    st.subheader("🔍 全文搜索（标题 / 正文 / 表格）")
+
+    keyword = st.text_input("输入关键词")
+
+    if st.button("开始搜索"):
+        if not keyword.strip():
+            st.warning("请输入关键词")
+        else:
+            results = we.full_text_search(
+                doc_path=doc_path,
+                keyword=keyword
             )
 
-# ======================
-# 结果展示
-# ======================
-result = st.session_state.search_result
+            if not results:
+                st.info("未找到匹配内容")
+            else:
+                st.success(f"共找到 {len(results)} 条结果")
 
-if result:
-    topics   = result.get("topics", [])
-    contents = result.get("contents", [])
-    tables   = result.get("tables", [])
+                for i, r in enumerate(results, 1):
+                
+                    # 情况 1：返回的是字典（你原来的结构化搜索）
+                    if isinstance(r, dict):
+                        title_parts = []
+                        if "column" in r:
+                            title_parts.append(r["column"])
+                        if "topic" in r and r["topic"]:
+                            title_parts.append(r["topic"])
+                
+                        title = " → ".join(title_parts) if title_parts else "搜索结果"
+                
+                        with st.expander(f"{i}. {title}"):
+                            if "content" in r:
+                                st.write(r["content"])
+                            else:
+                                st.write(r)
+                
+                    # 情况 2：返回的是纯文本（Tkinter 版常见）
+                    else:
+                        with st.expander(f"{i}. 搜索结果"):
+                            st.write(r)
+                
 
-    all_results = []
-    all_results.extend(topics)
-    all_results.extend(contents)
-    all_results.extend(tables)
+# ==================================================
+# 🤖 Tab 3：AI 分析（非阻塞）
+# ==================================================
+with tab_ai:
+    st.subheader("🤖 AI 学术辅助分析")
 
-    st.subheader(f"✅ 共找到 {len(all_results)} 条结果")
+    source = st.radio(
+        "分析对象",
+        ["当前主题内容", "自定义文本"]
+    )
 
-    if not all_results:
-        st.info("没有找到匹配内容")
+    if source == "当前主题内容":
+        if "topic" not in locals() or not topic:
+            st.warning("请先在【专栏 / 主题阅读】中选择主题")
+            st.stop()
+        text = "\n".join(
+            t for t in content if isinstance(t, str)
+        )
     else:
-        for i, r in enumerate(all_results, 1):
+        text = st.text_area("输入分析文本", height=260)
 
-            # ========= 标题 =========
-            title_parts = []
-            if r.get("section"):
-                title_parts.append(r["section"])
-            if r.get("topic"):
-                title_parts.append(r["topic"])
+    if st.button("开始 AI 分析"):
+        if not text.strip():
+            st.warning("内容不能为空")
+        else:
+            placeholder = st.empty()
 
-            title = " → ".join(title_parts) if title_parts else "搜索结果"
+            def run_ai():
+                try:
+                    summary = ai.summarize_text(text)
+                    keywords = ai.extract_keywords(text)
+                    analysis = ai.analyze_topic(text)
 
-            with st.expander(f"{i}. {title}", expanded=False):
+                    placeholder.markdown("### 📌 摘要")
+                    placeholder.write(summary)
 
-                # ========= 元信息 =========
-                meta = []
-                if r.get("year"):
-                    meta.append(f"📅 {r['year']}年")
-                if r.get("issue"):
-                    meta.append(f"📖 {r['issue']}")
-                if meta:
-                    st.caption(" | ".join(meta))
+                    placeholder.markdown("### 🏷 关键词")
+                    placeholder.write(keywords)
 
-                # ========= 正文 =========
-                if r.get("content"):
-                    st.markdown(r["content"])
+                    placeholder.markdown("### 🧠 学术分析")
+                    placeholder.write(analysis)
+                except Exception as e:
+                    placeholder.error(str(e))
 
-                # ========= 表格 =========
-                if r.get("table"):
-                    st.text(r["table"])
-
-                # ========= 兜底 =========
-                if not r.get("content") and not r.get("table"):
-                    st.warning("该结果没有正文内容")
-
-# ======================
-# 说明
-# ======================
-st.markdown("---")
-st.caption(
-    "✔ 专栏 = Word 中「标题1」\n"
-    "✔ 主题 = Word 中「标题2」\n"
-    "✔ 正文 / 表格 = 标题2 下内容\n"
-    "✔ 已完整复刻 Tkinter 搜索语义"
-)
+            threading.Thread(target=run_ai).start()
 
 
