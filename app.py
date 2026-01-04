@@ -108,6 +108,11 @@ with st.sidebar:
         st.error("未找到 Word")
         st.stop()
 
+# ==================================================
+# 全局跳转提示（关键）
+# ==================================================
+if st.session_state.force_read:
+    st.info("📖 已跳转到对应期刊 / 专栏 / 主题，请切换到【📖 专栏 / 主题阅读】查看")
 
 # ==================================================
 # Tabs
@@ -126,6 +131,10 @@ with tab_read:
     if st.session_state.force_read:
         st.success("📌 已跳转到搜索命中的位置")
         st.session_state.force_read = False
+    
+        # 自动滚动到内容区域（Streamlit 官方推荐技巧）
+        st.markdown("<a id='read_anchor'></a>", unsafe_allow_html=True)
+
 
     columns = we.list_columns(doc_path)
     if not columns:
@@ -155,7 +164,7 @@ with tab_read:
 
     with c2:
         topic = st.selectbox("选择主题", topics, index=topics.index(topic))
-
+    st.markdown("<a href='#read_anchor'></a>", unsafe_allow_html=True)
     st.markdown(f"### {topic}")
 
     content = we.get_topic_content(doc_path, column, topic)
