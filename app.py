@@ -1,5 +1,7 @@
 import streamlit as st
 import threading
+import glob
+import os
 
 from logic import word_engine as we
 from logic import ai_engine as ai
@@ -93,6 +95,10 @@ with tab_search:
     st.subheader("🔍 全文搜索（标题 / 正文 / 表格）")
 
     keyword = st.text_input("输入关键词")
+    global_mode = st.checkbox(
+        "🌍 切换为全局搜索模式（搜索所有年份 / 所有期刊）",
+        value=False
+    )
 
     if st.button("开始搜索"):
         if not keyword.strip():
