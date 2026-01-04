@@ -15,10 +15,14 @@ from logic import ai_engine as ai
 for k in [
     "jump_year", "jump_issue",
     "jump_column", "jump_topic",
-    "force_read"
+    "force_read", "current_tab"
 ]:
     if k not in st.session_state:
         st.session_state[k] = None
+
+# 初始化 current_tab
+if st.session_state.current_tab is None:
+    st.session_state.current_tab = 0
 
 
 # ==================================================
@@ -84,12 +88,16 @@ with st.sidebar:
         st.error("未检测到 data/电子书")
         st.stop()
 
+    # 使用 jump_year，如果没有则用第一个
     year = (
         st.session_state.jump_year
-        if st.session_state.jump_year in years
+        if st.session_state.jump_year and st.session_state.jump_year in years
         else years[0]
     )
-    year = st.selectbox("选择年份", years, index=years.index(year))
+    year = st.selectbox("选择年份", years, index=years.index(year), key="sidebar_year")
+    # 跳转后清空状态
+    if st.session_state.jump_year:
+        st.session_state.jump_year = None
 
     issues = we.list_issues(year)
     if not issues:
@@ -98,10 +106,13 @@ with st.sidebar:
 
     issue = (
         st.session_state.jump_issue
-        if st.session_state.jump_issue in issues
+        if st.session_state.jump_issue and st.session_state.jump_issue in issues
         else issues[0]
     )
-    issue = st.selectbox("选择期刊", issues, index=issues.index(issue))
+    issue = st.selectbox("选择期刊", issues, index=issues.index(issue), key="sidebar_issue")
+    # 跳转后清空状态
+    if st.session_state.jump_issue:
+        st.session_state.jump_issue = None
 
     doc_path = we.find_doc_path(year, issue)
     if not doc_path:
@@ -110,14 +121,27 @@ with st.sidebar:
 
 
 # ==================================================
-# ✅ 可控 Tab（关键修复点）
+# Tab 选择（关键修复）
 # ==================================================
+tab_options = ["📖 专栏 / 主题阅读", "🔍 全文搜索", "🤖 AI 分析"]
+tab_index = st.session_state.current_tab if st.session_state.current_tab is not None else 0
+
 tab = st.radio(
     "功能区",
-    ["📖 专栏 / 主题阅读", "🔍 全文搜索", "🤖 AI 分析"],
+    tab_options,
     horizontal=True,
-    index=0 if st.session_state.force_read else 1
+    index=tab_index
 )
+
+# 更新当前 tab
+st.session_state.current_tab = tab_options.index(tab)
+
+# 如果强制跳转，显示提示并切换到阅读区
+if st.session_state.force_read:
+    st.success("📌 已跳转到搜索命中的位置")
+    st.session_state.force_read = False
+    st.session_state.current_tab = 0
+    tab = tab_options[0]
 
 
 # ==================================================
@@ -126,10 +150,6 @@ tab = st.radio(
 if tab == "📖 专栏 / 主题阅读":
     st.subheader("📖 按专栏 / 主题阅读")
 
-    if st.session_state.force_read:
-        st.success("📌 已跳转到搜索命中的位置")
-        st.session_state.force_read = False
-
     columns = we.list_columns(doc_path)
     if not columns:
         st.warning("未识别到专栏")
@@ -137,13 +157,17 @@ if tab == "📖 专栏 / 主题阅读":
 
     column = (
         st.session_state.jump_column
-        if st.session_state.jump_column in columns
+        if st.session_state.jump_column and st.session_state.jump_column in columns
         else columns[0]
     )
 
     c1, c2 = st.columns([1, 2])
     with c1:
-        column = st.selectbox("选择专栏", columns, index=columns.index(column))
+        column = st.selectbox("选择专栏", columns, index=columns.index(column), key="select_column")
+    
+    # 清空状态
+    if st.session_state.jump_column:
+        st.session_state.jump_column = None
 
     topics = we.list_topics(doc_path, column)
     if not topics:
@@ -152,12 +176,16 @@ if tab == "📖 专栏 / 主题阅读":
 
     topic = (
         st.session_state.jump_topic
-        if st.session_state.jump_topic in topics
+        if st.session_state.jump_topic and st.session_state.jump_topic in topics
         else topics[0]
     )
 
     with c2:
-        topic = st.selectbox("选择主题", topics, index=topics.index(topic))
+        topic = st.selectbox("选择主题", topics, index=topics.index(topic), key="select_topic")
+    
+    # 清空状态
+    if st.session_state.jump_topic:
+        st.session_state.jump_topic = None
 
     st.markdown(f"### {topic}")
 
@@ -175,7 +203,7 @@ if tab == "📖 专栏 / 主题阅读":
 # ==================================================
 # 🔍 搜索区（高亮 + 跳转）
 # ==================================================
-if tab == "🔍 全文搜索":
+elif tab == "🔍 全文搜索":
     st.subheader("🔍 全文搜索")
 
     keyword = st.text_input("输入关键词")
@@ -219,12 +247,14 @@ if tab == "🔍 全文搜索":
                             )
 
                     if st.button("📖 跳转阅读", key=f"jump_{idx}"):
+                        # 设置所有跳转参数
                         st.session_state.jump_year = r.get("year")
                         st.session_state.jump_issue = r.get("issue")
                         st.session_state.jump_column = r.get("column")
                         st.session_state.jump_topic = r.get("topic")
                         st.session_state.force_read = True
-                        st.experimental_rerun()
+                        st.session_state.current_tab = 0  # 👈 关键：设置 tab 为 0
+                        st.rerun()  # 👈 使用 st.rerun() 替代 st.experimental_rerun()
 
                 idx += 1
 
@@ -232,7 +262,7 @@ if tab == "🔍 全文搜索":
 # ==================================================
 # 🤖 AI 分析
 # ==================================================
-if tab == "🤖 AI 分析":
+elif tab == "🤖 AI 分析":
     st.subheader("🤖 AI 学术辅助")
 
     source = st.radio("分析对象", ["当前主题", "自定义文本"])
@@ -260,4 +290,3 @@ if tab == "🤖 AI 分析":
                 placeholder.error(str(e))
 
         threading.Thread(target=run_ai).start()
-
