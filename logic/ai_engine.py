@@ -1,7 +1,7 @@
 import requests
 
 API_URL = "https://api.deepseek.com/v1/chat/completions"
-API_KEY = "sk_你的api密钥"  # 直接填入你的 API Key
+API_KEY = "sk-cc5b3202d72749919ada90c6e67542ae"  # 直接填入你的 API Key
 
 def ask_ai(question, context):
     """
@@ -73,3 +73,4 @@ def extract_keywords(text):
 def analyze_topic(text):
     """主题分析"""
     return ask_ai("请深入分析这段内容，包括背景、重点和启示", text)
+
