@@ -221,47 +221,41 @@ elif tab == "🔍 全文搜索":
             st.stop()
 
         st.success(f"共找到 {total} 条结果")
-        idx = 1
-
+        
+        # 🔑 先收集所有结果到列表
+        all_results = []
         for group in ["topics", "contents", "tables"]:
             for r in results[group]:
-                title = f"[{r.get('year','')}] {r.get('issue','')} ｜ {r.get('column','')} → {r.get('topic','')}"
-                with st.expander(f"{idx}. {title}"):
-
-                    if group == "topics":
-                        st.markdown(highlight(r["hit"], keyword), unsafe_allow_html=True)
-                    elif group == "contents":
-                        st.markdown(highlight(r["content"], keyword), unsafe_allow_html=True)
-                    else:
-                        for row in r["content"]:
-                            st.markdown(
-                                " | ".join(highlight(c, keyword) for c in row),
-                                unsafe_allow_html=True
-                            )
-
-                    if st.button("📖 跳转阅读", key=f"jump_{idx}"):
-                        # 🐛 调试：显示原始值
-                        with st.container():
-                            st.warning("⚠️ 调试信息（跳转前）")
-                            st.json({
-                                "raw_year": r.get("year"),
-                                "raw_issue": r.get("issue"),
-                                "raw_column": r.get("column"),
-                                "raw_topic": r.get("topic"),
-                                "available_years": we.list_years(),
-                                "available_issues": we.list_issues(r.get("year", "").replace("年", "")) if r.get("year") else []
-                            })
-                        
-                        # 🔑 设置所有跳转参数
-                        st.session_state.jump_year = r.get("year")
-                        st.session_state.jump_issue = r.get("issue")
-                        st.session_state.jump_column = r.get("column")
-                        st.session_state.jump_topic = r.get("topic")
-                        st.session_state.force_read = True
-                        
-                        st.rerun()
-
-                idx += 1
+                all_results.append((group, r))
+        
+        # 显示结果
+        for idx, (group, r) in enumerate(all_results, 1):
+            title = f"[{r.get('year','')}] {r.get('issue','')} ｜ {r.get('column','')} → {r.get('topic','')}"
+            
+            with st.expander(f"{idx}. {title}"):
+                # 显示内容
+                if group == "topics":
+                    st.markdown(highlight(r["hit"], keyword), unsafe_allow_html=True)
+                elif group == "contents":
+                    st.markdown(highlight(r["content"], keyword), unsafe_allow_html=True)
+                else:
+                    for row in r["content"]:
+                        st.markdown(
+                            " | ".join(highlight(c, keyword) for c in row),
+                            unsafe_allow_html=True
+                        )
+                
+                # 分开一行放按钮和调试
+                col1, col2 = st.columns([1, 4])
+                
+                with col1:
+                    if st.button("📖 跳转", key=f"jump_btn_{idx}"):
+                        st.write("✅ 按钮被点击了")
+                        st.write(f"Year: {r.get('year')}")
+                        st.write(f"Issue: {r.get('issue')}")
+                
+                with col2:
+                    st.caption(f"原始数据: year={r.get('year')}, issue={r.get('issue')}, column={r.get('column')}, topic={r.get('topic')}")
 
 
 # ==================================================
