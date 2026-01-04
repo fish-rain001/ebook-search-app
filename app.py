@@ -64,14 +64,14 @@ def cached_global_search(all_docs, keyword):
     for p in all_docs:
         try:
             r = we.full_text_search(p, keyword)
-            year = os.path.basename(os.path.dirname(p))
-            issue = os.path.basename(p)
+            year = os.path.basename(os.path.dirname(p)).replace("年", "")  # 提取年份，去掉"年"
+            issue = we.extract_issue_from_filename(os.path.basename(p))  # 🔧 使用辅助函数提取期刊号
             for k in result:
                 for x in r[k]:
                     x["year"] = year
                     x["issue"] = issue
                     result[k].append(x)
-        except Exception:
+        except Exception as e:
             pass
     return result
 
@@ -250,9 +250,13 @@ elif tab == "🔍 全文搜索":
                 
                 with col1:
                     if st.button("📖 跳转", key=f"jump_btn_{idx}"):
-                        st.write("✅ 按钮被点击了")
-                        st.write(f"Year: {r.get('year')}")
-                        st.write(f"Issue: {r.get('issue')}")
+                        # 🔑 关键：直接设置状态并重新运行
+                        st.session_state.jump_year = r.get("year")
+                        st.session_state.jump_issue = r.get("issue")
+                        st.session_state.jump_column = r.get("column")
+                        st.session_state.jump_topic = r.get("topic")
+                        st.session_state.current_tab = 0
+                        st.rerun()
                 
                 with col2:
                     st.caption(f"原始数据: year={r.get('year')}, issue={r.get('issue')}, column={r.get('column')}, topic={r.get('topic')}")
