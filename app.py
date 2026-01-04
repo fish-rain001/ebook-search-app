@@ -230,92 +230,57 @@ if tab == "🔍 全文搜索":
 
 
 # ==================================================
-# 🤖 AI 分析（改进版）
+# 🤖 Tab 3：AI 问题驱动分析
 # ==================================================
-if tab == "🤖 AI 分析":
-    st.subheader("🤖 AI 学术辅助")
+with tab_ai:
+    st.subheader("🤖 AI 学术辅助分析（基于当前主题）")
 
+    if "topic" not in locals() or not topic:
+        st.info("请先在【📖 专栏 / 主题阅读】中选择一个主题")
+        st.stop()
 
-
-    # 第一步：选择分析对象
-    source = st.radio(
-        "分析对象",
-        ["📖 当前主题", "📝 自定义文本"],
-        horizontal=True
+    # —— 当前主题正文 —— #
+    topic_text = "\n".join(
+        t for t in content if isinstance(t, str)
     )
 
-    if source == "📖 当前主题":
-        # 需要先在阅读区选择主题
-        if "content" not in locals() or not content:
-            st.warning("⚠️ 请先在「专栏 / 主题阅读」选择一个主题")
-            st.stop()
-        
-        # 显示当前选中的主题信息
-        st.info(f"📌 当前主题：**{st.session_state.jump_topic}**")
-        
-        # 提取内容
-        text = "\n".join(
-            t for t in content 
-            if isinstance(t, str) and t.strip()
-        )
-        
-        if not text:
-            st.warning("该主题暂无文本内容")
-            st.stop()
-        
-        st.text(f"内容长度：{len(text)} 字")
+    if not topic_text.strip():
+        st.warning("当前主题下没有可供分析的正文内容")
+        st.stop()
 
-    else:  # 自定义文本
-        text = st.text_area(
-            "输入文本",
-            height=200,
-            placeholder="粘贴要分析的内容..."
-        )
-        if not text.strip():
-            st.info("请输入分析内容")
-            st.stop()
-
-    st.divider()
-
-    # 第二步：输入问题
-    st.subheader("提问")
-    user_question = st.text_input(
-        "向 AI 提出你的问题",
-        placeholder="例如：这个内容的核心观点是什么？",
-        max_chars=500
+    # —— 用户问题输入 —— #
+    question = st.text_area(
+        "请输入你想让 AI 分析的问题（基于当前主题内容）",
+        height=120,
+        placeholder="例如：请从政策背景和实际影响两个角度进行分析"
     )
 
-    # 第三步：分析按钮
-    col1, col2 = st.columns([1, 4])
-    with col1:
-        analyze_btn = st.button("🚀 AI 分析", use_container_width=True)
-
-    if analyze_btn:
-        if not user_question.strip():
+    if st.button("开始 AI 分析"):
+        if not question.strip():
             st.warning("请输入问题")
             st.stop()
 
-        # 调用 AI
-        with st.spinner("🤔 AI 正在分析中..."):
+        placeholder = st.empty()
+
+        def run_ai():
             try:
-                from logic import ai_engine as ai
-                
-                # 调用 ask_ai 函数
-                response = ai.ask_ai(user_question, text)
-                
-                st.markdown("### 📋 分析结果")
-                st.markdown(response)
-                
-                # 可选：添加下载按钮
-                st.divider()
-                col1, col2 = st.columns(2)
-                with col1:
-                    st.download_button(
-                        label="📥 下载结果",
-                        data=response,
-                        file_name="ai_analysis.txt",
-                        mime="text/plain"
-                    )
-                
+                prompt = f"""
+请基于以下文档内容，严谨、准确地回答用户的问题。
+如果内容中没有相关信息，请明确说明。
+
+【文档内容】
+{topic_text}
+
+【用户问题】
+{question}
+"""
+                answer = ai.analyze_topic(prompt)
+
+                placeholder.markdown("### 🧠 AI 分析结果")
+                placeholder.write(answer)
+
             except Exception as e:
-                st.error(f"❌ 分析失败：{str(e)}")
+                placeholder.error(f"AI 分析失败：{e}")
+
+        threading.Thread(target=run_ai).start()
+
