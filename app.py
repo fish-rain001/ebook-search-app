@@ -261,6 +261,31 @@ elif tab == "🔍 全文搜索":
                         issue_match = re.match(r"(第[一二三四五六七八九十\d]+期|第\d+号)", raw_issue)
                         clean_issue = issue_match.group(1) if issue_match else raw_issue.replace(".docx", "")
                         
+                        # 🐛 调试信息
+                        st.warning("🔍 跳转调试信息")
+                        st.json({
+                            "原始数据": {
+                                "year": raw_year,
+                                "issue": raw_issue,
+                                "column": r.get("column"),
+                                "topic": r.get("topic")
+                            },
+                            "清理后的数据": {
+                                "year": clean_year,
+                                "issue": clean_issue,
+                                "column": r.get("column"),
+                                "topic": r.get("topic")
+                            },
+                            "可用选项": {
+                                "years": we.list_years(),
+                                "issues": we.list_issues(clean_year)
+                            },
+                            "是否匹配": {
+                                "year_match": clean_year in we.list_years(),
+                                "issue_match": clean_issue in we.list_issues(clean_year)
+                            }
+                        })
+                        
                         st.session_state.jump_year = clean_year
                         st.session_state.jump_issue = clean_issue
                         st.session_state.jump_column = r.get("column")
