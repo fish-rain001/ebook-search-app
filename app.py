@@ -246,6 +246,16 @@ elif tab == "🔍 全文搜索":
                         st.session_state.jump_column = r.get("column")
                         st.session_state.jump_topic = r.get("topic")
                         st.session_state.force_read = True
+                        
+                        # 🐛 调试信息
+                        st.write("=== 调试信息 ===")
+                        st.write(f"jump_year: {st.session_state.jump_year}")
+                        st.write(f"jump_issue: {st.session_state.jump_issue}")
+                        st.write(f"jump_column: {st.session_state.jump_column}")
+                        st.write(f"jump_topic: {st.session_state.jump_topic}")
+                        st.write(f"force_read: {st.session_state.force_read}")
+                        st.write(f"current_tab: {st.session_state.current_tab}")
+                        
                         st.rerun()
 
                 idx += 1
