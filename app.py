@@ -1,6 +1,6 @@
 import os
-import re
 import glob
+import re
 import html
 import threading
 import streamlit as st
@@ -10,39 +10,71 @@ from logic import ai_engine as ai
 
 
 # ==================================================
+# Session 初始化（非常重要）
+# ==================================================
+for k in [
+    "jump_year", "jump_issue",
+    "jump_column", "jump_topic",
+    "force_read"
+]:
+    if k not in st.session_state:
+        st.session_state[k] = None
+
+
+# ==================================================
 # 页面配置
 # ==================================================
-st.set_page_config(page_title="电子书专栏检索系统", layout="wide")
-st.title("📚 电子书专栏检索系统（Streamlit）")
+st.set_page_config(
+    page_title="电子书专栏检索系统",
+    layout="wide"
+)
+
+st.title("📚 电子书专栏检索系统")
 
 
 # ==================================================
-# Session 初始化
+# 工具：高亮
 # ==================================================
-if "jump_target" not in st.session_state:
-    st.session_state.jump_target = None
-
-if "search_cache" not in st.session_state:
-    st.session_state.search_cache = {}
-
-
-# ==================================================
-# 高亮函数
-# ==================================================
-def highlight(text, kw):
-    if not text or not kw:
-        return text
-    safe = html.escape(text)
+def highlight(text, keyword):
+    if not text or not keyword:
+        return html.escape(text)
+    text = html.escape(text)
     return re.sub(
-        re.escape(kw),
+        re.escape(keyword),
         lambda m: f"<mark style='background:#ffe066'>{m.group(0)}</mark>",
-        safe,
+        text,
         flags=re.IGNORECASE
     )
 
 
 # ==================================================
-# Sidebar：文档选择（完全保留你原逻辑）
+# 搜索缓存
+# ==================================================
+@st.cache_data(show_spinner=False)
+def cached_search(doc_path, keyword):
+    return we.full_text_search(doc_path, keyword)
+
+
+@st.cache_data(show_spinner=False)
+def cached_global_search(all_docs, keyword):
+    result = {"topics": [], "contents": [], "tables": []}
+    for p in all_docs:
+        try:
+            r = we.full_text_search(p, keyword)
+            year = os.path.basename(os.path.dirname(p))
+            issue = os.path.basename(p)
+            for k in result:
+                for x in r[k]:
+                    x["year"] = year
+                    x["issue"] = issue
+                    result[k].append(x)
+        except Exception:
+            pass
+    return result
+
+
+# ==================================================
+# Sidebar：文档选择（完全支持跳转）
 # ==================================================
 with st.sidebar:
     st.header("📂 文档选择")
@@ -52,12 +84,28 @@ with st.sidebar:
         st.error("未检测到 data/电子书")
         st.stop()
 
-    year = st.selectbox("选择年份", years)
+    year = (
+        st.session_state.jump_year
+        if st.session_state.jump_year in years
+        else years[0]
+    )
+    year = st.selectbox("选择年份", years, index=years.index(year))
+
     issues = we.list_issues(year)
-    issue = st.selectbox("选择期刊", issues)
+    if not issues:
+        st.warning("该年份无期刊")
+        st.stop()
+
+    issue = (
+        st.session_state.jump_issue
+        if st.session_state.jump_issue in issues
+        else issues[0]
+    )
+    issue = st.selectbox("选择期刊", issues, index=issues.index(issue))
 
     doc_path = we.find_doc_path(year, issue)
     if not doc_path:
+        st.error("未找到 Word")
         st.stop()
 
 
@@ -70,37 +118,59 @@ tab_read, tab_search, tab_ai = st.tabs(
 
 
 # ==================================================
-# 📖 阅读区（完全沿用你原逻辑）
+# 📖 阅读（跳转最终落点）
 # ==================================================
 with tab_read:
     st.subheader("📖 按专栏 / 主题阅读")
 
+    if st.session_state.force_read:
+        st.success("📌 已跳转到搜索命中的位置")
+        st.session_state.force_read = False
+
     columns = we.list_columns(doc_path)
     if not columns:
-        st.info("未识别到专栏")
+        st.warning("未识别到专栏")
         st.stop()
 
-    column = st.selectbox("选择专栏", columns)
-    topics = we.list_topics(doc_path, column)
+    column = (
+        st.session_state.jump_column
+        if st.session_state.jump_column in columns
+        else columns[0]
+    )
 
+    c1, c2 = st.columns([1, 2])
+    with c1:
+        column = st.selectbox("选择专栏", columns, index=columns.index(column))
+
+    topics = we.list_topics(doc_path, column)
     if not topics:
         st.info("该专栏无主题")
         st.stop()
 
-    topic = st.selectbox("选择主题", topics)
+    topic = (
+        st.session_state.jump_topic
+        if st.session_state.jump_topic in topics
+        else topics[0]
+    )
+
+    with c2:
+        topic = st.selectbox("选择主题", topics, index=topics.index(topic))
 
     st.markdown(f"### {topic}")
-    content = we.get_topic_content(doc_path, column, topic)
 
-    for block in content:
-        if isinstance(block, dict) and "table" in block:
-            st.table(block["table"])
-        else:
-            st.write(block)
+    content = we.get_topic_content(doc_path, column, topic)
+    if not content:
+        st.info("该主题无正文")
+    else:
+        for block in content:
+            if isinstance(block, dict) and "table" in block:
+                st.table(block["table"])
+            else:
+                st.write(block)
 
 
 # ==================================================
-# 🔍 搜索（在你原版基础上增强）
+# 🔍 搜索（带高亮 + 跳转）
 # ==================================================
 with tab_search:
     st.subheader("🔍 全文搜索")
@@ -113,67 +183,75 @@ with tab_search:
             st.warning("请输入关键词")
             st.stop()
 
-        cache_key = f"{keyword}_{global_mode}_{year}_{issue}"
-        if cache_key in st.session_state.search_cache:
-            results = st.session_state.search_cache[cache_key]
+        if global_mode:
+            root = os.path.join("data", "电子书")
+            docs = glob.glob(os.path.join(root, "**", "*.docx"), recursive=True)
+            with st.spinner(f"正在搜索 {len(docs)} 个文档"):
+                results = cached_global_search(docs, keyword)
         else:
-            results = []
+            results = cached_search(doc_path, keyword)
 
-            if global_mode:
-                root = os.path.join("data", "电子书")
-                files = glob.glob(os.path.join(root, "**", "*.docx"), recursive=True)
-
-                for p in files:
-                    res = we.full_text_search(p, keyword)
-                    for group in res.values():
-                        for r in group:
-                            r["_doc_path"] = p
-                            results.append(r)
-            else:
-                res = we.full_text_search(doc_path, keyword)
-                for group in res.values():
-                    results.extend(group)
-
-            st.session_state.search_cache[cache_key] = results
-
-        if not results:
-            st.info("未找到匹配内容")
+        total = sum(len(results[k]) for k in results)
+        if total == 0:
+            st.info("无匹配结果")
             st.stop()
 
-        st.success(f"共找到 {len(results)} 条结果")
+        st.success(f"共找到 {total} 条结果")
+        idx = 1
 
-        for i, r in enumerate(results, 1):
-            title = f"{r.get('column','')} → {r.get('topic','')}"
-            with st.expander(f"{i}. {title}"):
+        for group in ["topics", "contents", "tables"]:
+            for r in results[group]:
+                title = f"[{r.get('year','')}] {r.get('issue','')} ｜ {r.get('column','')} → {r.get('topic','')}"
+                with st.expander(f"{idx}. {title}"):
 
-                if "content" in r:
-                    st.markdown(
-                        highlight(str(r["content"]), keyword),
-                        unsafe_allow_html=True
-                    )
-                elif "hit" in r:
-                    st.markdown(
-                        highlight(r["hit"], keyword),
-                        unsafe_allow_html=True
-                    )
+                    if group == "topics":
+                        st.markdown(highlight(r["hit"], keyword), unsafe_allow_html=True)
+                    elif group == "contents":
+                        st.markdown(highlight(r["content"], keyword), unsafe_allow_html=True)
+                    else:
+                        for row in r["content"]:
+                            st.markdown(
+                                " | ".join(highlight(c, keyword) for c in row),
+                                unsafe_allow_html=True
+                            )
 
-                if st.button("📖 跳转阅读", key=f"jump_{i}"):
-                    st.session_state.jump_target = r
-                    st.experimental_rerun()
+                    if st.button("📖 跳转阅读", key=f"jump_{idx}"):
+                        st.session_state.jump_year = r.get("year")
+                        st.session_state.jump_issue = r.get("issue")
+                        st.session_state.jump_column = r.get("column")
+                        st.session_state.jump_topic = r.get("topic")
+                        st.session_state.force_read = True
+                        st.experimental_rerun()
+
+                idx += 1
 
 
 # ==================================================
-# 🤖 AI（不动你原结构）
+# 🤖 AI 分析
 # ==================================================
 with tab_ai:
-    st.subheader("🤖 AI 学术辅助分析")
+    st.subheader("🤖 AI 学术辅助")
 
-    text = "\n".join(t for t in content if isinstance(t, str))
-    if st.button("开始 AI 分析"):
+    source = st.radio("分析对象", ["当前主题", "自定义文本"])
+
+    if source == "当前主题":
+        text = "\n".join(t for t in content if isinstance(t, str))
+    else:
+        text = st.text_area("输入文本", height=260)
+
+    if st.button("开始分析"):
         placeholder = st.empty()
 
         def run_ai():
-            placeholder.write(ai.analyze_topic(text))
+            try:
+                placeholder.markdown("### 📌 摘要")
+                placeholder.write(ai.summarize_text(text))
+                placeholder.markdown("### 🏷 关键词")
+                placeholder.write(ai.extract_keywords(text))
+                placeholder.markdown("### 🧠 分析")
+                placeholder.write(ai.analyze_topic(text))
+            except Exception as e:
+                placeholder.error(str(e))
 
         threading.Thread(target=run_ai).start()
 
