@@ -20,7 +20,6 @@ for k in [
     if k not in st.session_state:
         st.session_state[k] = None
 
-# 初始化 current_tab
 if st.session_state.current_tab is None:
     st.session_state.current_tab = 0
 
@@ -88,31 +87,31 @@ with st.sidebar:
         st.error("未检测到 data/电子书")
         st.stop()
 
-    # 使用 jump_year，如果没有则用第一个
-    year = (
-        st.session_state.jump_year
-        if st.session_state.jump_year and st.session_state.jump_year in years
-        else years[0]
-    )
-    year = st.selectbox("选择年份", years, index=years.index(year), key="sidebar_year")
-    # 跳转后清空状态
-    if st.session_state.jump_year:
-        st.session_state.jump_year = None
+    # 🔑 优先使用 jump_year，否则用第一个
+    if st.session_state.jump_year and st.session_state.jump_year in years:
+        year = st.session_state.jump_year
+        year_idx = years.index(year)
+        st.session_state.jump_year = None  # 立即清空，防止重复
+    else:
+        year = years[0]
+        year_idx = 0
+
+    year = st.selectbox("选择年份", years, index=year_idx)
 
     issues = we.list_issues(year)
     if not issues:
         st.warning("该年份无期刊")
         st.stop()
 
-    issue = (
-        st.session_state.jump_issue
-        if st.session_state.jump_issue and st.session_state.jump_issue in issues
-        else issues[0]
-    )
-    issue = st.selectbox("选择期刊", issues, index=issues.index(issue), key="sidebar_issue")
-    # 跳转后清空状态
-    if st.session_state.jump_issue:
-        st.session_state.jump_issue = None
+    if st.session_state.jump_issue and st.session_state.jump_issue in issues:
+        issue = st.session_state.jump_issue
+        issue_idx = issues.index(issue)
+        st.session_state.jump_issue = None  # 立即清空
+    else:
+        issue = issues[0]
+        issue_idx = 0
+
+    issue = st.selectbox("选择期刊", issues, index=issue_idx)
 
     doc_path = we.find_doc_path(year, issue)
     if not doc_path:
@@ -121,11 +120,16 @@ with st.sidebar:
 
 
 # ==================================================
-# Tab 选择（关键修复）
+# Tab 选择
 # ==================================================
 tab_options = ["📖 专栏 / 主题阅读", "🔍 全文搜索", "🤖 AI 分析"]
-tab_index = st.session_state.current_tab if st.session_state.current_tab is not None else 0
 
+# 如果强制读取，必须切到第一个 tab
+if st.session_state.force_read:
+    st.session_state.current_tab = 0
+    st.session_state.force_read = False
+
+tab_index = st.session_state.current_tab if st.session_state.current_tab is not None else 0
 tab = st.radio(
     "功能区",
     tab_options,
@@ -133,15 +137,7 @@ tab = st.radio(
     index=tab_index
 )
 
-# 更新当前 tab
 st.session_state.current_tab = tab_options.index(tab)
-
-# 如果强制跳转，显示提示并切换到阅读区
-if st.session_state.force_read:
-    st.success("📌 已跳转到搜索命中的位置")
-    st.session_state.force_read = False
-    st.session_state.current_tab = 0
-    tab = tab_options[0]
 
 
 # ==================================================
@@ -155,37 +151,34 @@ if tab == "📖 专栏 / 主题阅读":
         st.warning("未识别到专栏")
         st.stop()
 
-    column = (
-        st.session_state.jump_column
-        if st.session_state.jump_column and st.session_state.jump_column in columns
-        else columns[0]
-    )
+    # 🔑 直接使用 jump_column，避免 selectbox 的复杂逻辑
+    if st.session_state.jump_column and st.session_state.jump_column in columns:
+        column = st.session_state.jump_column
+        column_idx = columns.index(column)
+        st.session_state.jump_column = None
+    else:
+        column = columns[0]
+        column_idx = 0
 
     c1, c2 = st.columns([1, 2])
     with c1:
-        column = st.selectbox("选择专栏", columns, index=columns.index(column), key="select_column")
-    
-    # 清空状态
-    if st.session_state.jump_column:
-        st.session_state.jump_column = None
+        column = st.selectbox("选择专栏", columns, index=column_idx)
 
     topics = we.list_topics(doc_path, column)
     if not topics:
         st.info("该专栏无主题")
         st.stop()
 
-    topic = (
-        st.session_state.jump_topic
-        if st.session_state.jump_topic and st.session_state.jump_topic in topics
-        else topics[0]
-    )
+    if st.session_state.jump_topic and st.session_state.jump_topic in topics:
+        topic = st.session_state.jump_topic
+        topic_idx = topics.index(topic)
+        st.session_state.jump_topic = None
+    else:
+        topic = topics[0]
+        topic_idx = 0
 
     with c2:
-        topic = st.selectbox("选择主题", topics, index=topics.index(topic), key="select_topic")
-    
-    # 清空状态
-    if st.session_state.jump_topic:
-        st.session_state.jump_topic = None
+        topic = st.selectbox("选择主题", topics, index=topic_idx)
 
     st.markdown(f"### {topic}")
 
@@ -247,14 +240,13 @@ elif tab == "🔍 全文搜索":
                             )
 
                     if st.button("📖 跳转阅读", key=f"jump_{idx}"):
-                        # 设置所有跳转参数
+                        # 🔑 设置所有跳转参数，然后重新运行
                         st.session_state.jump_year = r.get("year")
                         st.session_state.jump_issue = r.get("issue")
                         st.session_state.jump_column = r.get("column")
                         st.session_state.jump_topic = r.get("topic")
                         st.session_state.force_read = True
-                        st.session_state.current_tab = 0  # 👈 关键：设置 tab 为 0
-                        st.rerun()  # 👈 使用 st.rerun() 替代 st.experimental_rerun()
+                        st.rerun()
 
                 idx += 1
 
@@ -280,12 +272,13 @@ elif tab == "🤖 AI 分析":
 
         def run_ai():
             try:
-                placeholder.markdown("### 📌 摘要")
-                placeholder.write(ai.summarize_text(text))
-                placeholder.markdown("### 🏷 关键词")
-                placeholder.write(ai.extract_keywords(text))
-                placeholder.markdown("### 🧠 分析")
-                placeholder.write(ai.analyze_topic(text))
+                with placeholder.container():
+                    st.markdown("### 📌 摘要")
+                    st.write(ai.summarize_text(text))
+                    st.markdown("### 🏷 关键词")
+                    st.write(ai.extract_keywords(text))
+                    st.markdown("### 🧠 分析")
+                    st.write(ai.analyze_topic(text))
             except Exception as e:
                 placeholder.error(str(e))
 
