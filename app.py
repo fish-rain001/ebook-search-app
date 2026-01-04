@@ -187,20 +187,20 @@ if tab == "📖 专栏 / 主题阅读":
     if st.button("开始 AI 分析"):
         if not question.strip():
             st.warning("请输入问题")
-        else:
-            text = "\n".join(t for t in content if isinstance(t, str))
-            placeholder = st.empty()
+            st.stop()
+    
+        text = "\n".join(t for t in content if isinstance(t, str))
+    
+        with st.spinner("🤖 AI 分析中，请稍候..."):
+            try:
+                result = ai.ask_ai(question, text)
+    
+                st.markdown("### 🧠 AI 分析结果")
+                st.write(result)
+    
+            except Exception as e:
+                st.error(str(e))
 
-            def run_ai():
-                try:
-                    placeholder.markdown("### 🧠 AI 分析结果")
-                    placeholder.write(
-                        ai.ask_ai(question, text)
-                    )
-                except Exception as e:
-                    placeholder.error(str(e))
-
-            threading.Thread(target=run_ai).start()
 
 
 # ==================================================
