@@ -64,14 +64,14 @@ def cached_global_search(all_docs, keyword):
     for p in all_docs:
         try:
             r = we.full_text_search(p, keyword)
-            year = os.path.basename(os.path.dirname(p)).replace("年", "")  # 提取年份，去掉"年"
-            issue = we.extract_issue_from_filename(os.path.basename(p))  # 🔧 使用辅助函数提取期刊号
+            year = os.path.basename(os.path.dirname(p))  # 保持原样，返回完整的"2004年"格式
+            issue = os.path.basename(p)  # 保持原样，返回完整的文件名
             for k in result:
                 for x in r[k]:
                     x["year"] = year
                     x["issue"] = issue
                     result[k].append(x)
-        except Exception as e:
+        except Exception:
             pass
     return result
 
@@ -250,9 +250,19 @@ elif tab == "🔍 全文搜索":
                 
                 with col1:
                     if st.button("📖 跳转", key=f"jump_btn_{idx}"):
-                        # 🔑 关键：直接设置状态并重新运行
-                        st.session_state.jump_year = r.get("year")
-                        st.session_state.jump_issue = r.get("issue")
+                        # 🔧 格式转换：从全局搜索结果格式转换到 sidebar 期望的格式
+                        raw_year = r.get("year", "")  # 可能是"2004年"或"2004"
+                        raw_issue = r.get("issue", "")  # 可能是"第一期.docx"或"第一期"
+                        
+                        # 清理 year：去掉"年"字
+                        clean_year = raw_year.replace("年", "")
+                        
+                        # 清理 issue：提取出期刊号（第一期、第2号等）
+                        issue_match = re.match(r"(第[一二三四五六七八九十\d]+期|第\d+号)", raw_issue)
+                        clean_issue = issue_match.group(1) if issue_match else raw_issue.replace(".docx", "")
+                        
+                        st.session_state.jump_year = clean_year
+                        st.session_state.jump_issue = clean_issue
                         st.session_state.jump_column = r.get("column")
                         st.session_state.jump_topic = r.get("topic")
                         st.session_state.current_tab = 0
