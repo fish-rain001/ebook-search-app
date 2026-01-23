@@ -1,0 +1,100 @@
+import os
+import sys
+import win32com.client as win32
+
+# === 路径 ===
+TEMPLATE_DOCX = r"C:\Users\gorde\Desktop\1.docx"
+TARGET_DIR    = r"C:\Users\gorde\Desktop\新建文件夹0"
+
+# 是否删除目标文档中“不是模板里”的自定义样式（内置样式无法删除）
+# 开启后能最大程度“看起来就像模板里的一样”，但有微小风险（如果某些段落用到了被删的自定义样式会被回退）
+DELETE_NON_TEMPLATE_CUSTOM_STYLES = True
+
+def main():
+    if not os.path.exists(TEMPLATE_DOCX):
+        print("找不到模板文档：", TEMPLATE_DOCX)
+        sys.exit(1)
+    if not os.path.isdir(TARGET_DIR):
+        print("找不到目标文件夹：", TARGET_DIR)
+        sys.exit(1)
+
+    word = win32.gencache.EnsureDispatch("Word.Application")
+    word.Visible = False
+    # 0=不弹窗，避免兼容性提醒阻塞
+    word.DisplayAlerts = 0
+    const = win32.constants
+
+    print("打开模板文档…")
+    src = word.Documents.Open(TEMPLATE_DOCX, ReadOnly=True)
+    # 收集模板样式名（使用 NameLocal，兼容中文UI，如“正文”“标题 1”）
+    template_style_names = set()
+    for st in src.Styles:
+        try:
+            template_style_names.add(st.NameLocal)
+        except Exception:
+            pass
+
+    def copy_all_styles_to(doc):
+        # 方式A：逐个样式用 OrganizerCopy，最稳定
+        for name in template_style_names:
+            try:
+                word.OrganizerCopy(
+                    Source=src.FullName,
+                    Destination=doc.FullName,
+                    Name=name,
+                    Object=const.wdOrganizerObjectStyles  # 使用枚举常量，避免写死数字
+                )
+            except Exception:
+                # 个别样式可能是只读/列表样式/表格样式等，失败就跳过
+                pass
+
+        # 方式B（可选）：一把梭直接从“模板”复制所有样式
+        # 注意：官方更偏向 .dotx，但很多情况下对 .docx 也能工作
+        try:
+            doc.CopyStylesFromTemplate(src.FullName)
+        except Exception:
+            pass
+
+    def delete_non_template_custom_styles(doc):
+        to_delete = []
+        for st in doc.Styles:
+            try:
+                # 只删除“非内置且不在模板中的样式”
+                if (not st.BuiltIn) and (st.NameLocal not in template_style_names):
+                    to_delete.append(st.NameLocal)
+            except Exception:
+                pass
+        # 删除需要单独按名字取回
+        for name in to_delete:
+            try:
+                doc.Styles(name).Delete()
+            except Exception:
+                pass
+
+    print("开始批量处理：", TARGET_DIR)
+    for fn in os.listdir(TARGET_DIR):
+        if not fn.lower().endswith(".docx"):
+            continue
+        fpath = os.path.join(TARGET_DIR, fn)
+        try:
+            print(f"处理：{fpath}")
+            doc = word.Documents.Open(fpath)
+            # 复制所有样式定义（包含“正文/Normal”“标题/Title”“标题 1/Heading 1”等）
+            copy_all_styles_to(doc)
+
+            # 可选：删除目标文档中“模板里没有且非内置”的自定义样式，减少“样式很多”的情况
+            if DELETE_NON_TEMPLATE_CUSTOM_STYLES:
+                delete_non_template_custom_styles(doc)
+
+            # 保存
+            doc.Save()
+            doc.Close(SaveChanges=True)
+        except Exception as e:
+            print(f"处理失败：{fpath} -> {e}")
+
+    src.Close(SaveChanges=False)
+    word.Quit()
+    print("完成。")
+
+if __name__ == "__main__":
+    main()
