@@ -185,10 +185,18 @@ if tab == "📖 专栏 / 主题阅读":
 
     # ===== 正文展示 =====
     for block in content:
-        if isinstance(block, dict) and "table" in block:
-            st.table(block["table"])
+    
+        if isinstance(block, dict):
+    
+            if "table" in block:
+                st.table(block["table"])
+    
+            elif "image" in block:
+                st.image(block["image"])
+    
         else:
             st.write(block)
+
 
     # ==================================================
     # 🤖 AI 分析（就在这里）
