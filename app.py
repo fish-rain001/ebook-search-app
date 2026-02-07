@@ -242,10 +242,21 @@ if tab == "🔍 全文搜索":
             st.stop()
 
         if global_mode:
-            root = os.path.join("data", "电子书")
-            docs = glob.glob(os.path.join(root, "**", "*.docx"), recursive=True)
+        
+            root = os.path.join(
+                "data",
+                "电子书",
+                collection   # ⭐ 关键
+            )
+        
+            docs = glob.glob(
+                os.path.join(root, "**", "*.docx"),
+                recursive=True
+            )
+        
             with st.spinner(f"正在搜索 {len(docs)} 个文档"):
                 results = cached_global_search(docs, keyword)
+
         else:
             results = cached_search(doc_path, keyword)
 
