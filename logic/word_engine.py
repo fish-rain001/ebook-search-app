@@ -52,10 +52,18 @@ def is_normal_text(para):
 # =========================
 # 年份 / 期刊
 # =========================
-def list_years():
-    if not os.path.exists(BOOK_DIR):
+def list_years(collection):
+    base = os.path.join(BOOK_DIR, collection)
+
+    if not os.path.exists(base):
         return []
-    return sorted(d.replace("年", "") for d in os.listdir(BOOK_DIR) if d.endswith("年"))
+
+    return sorted(
+        d.replace("年", "")
+        for d in os.listdir(base)
+        if d.endswith("年")
+    )
+
 
 def list_issues(year):
     year_dir = os.path.join(BOOK_DIR, f"{year}年")
