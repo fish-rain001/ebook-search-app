@@ -5,6 +5,23 @@ from docx import Document
 from docx.document import Document as _Document
 from docx.table import Table
 from docx.text.paragraph import Paragraph
+from docx.oxml.ns import qn
+from docx.opc.constants import RELATIONSHIP_TYPE as RT
+from io import BytesIO
+
+def extract_images_from_paragraph(paragraph, doc):
+    images = []
+
+    for run in paragraph.runs:
+        drawing_elems = run.element.xpath('.//a:blip')
+
+        for blip in drawing_elems:
+            rId = blip.get(qn('r:embed'))
+            image_part = doc.part.related_parts[rId]
+            image_bytes = image_part.blob
+            images.append(image_bytes)
+
+    return images
 
 # =========================
 # 路径
@@ -190,8 +207,20 @@ def get_topic_content(doc_path, column, topic):
                 elif in_topic:
                     break
 
-            if in_topic and is_normal_text(block) and text:
-                content.append(text)
+            if in_topic and is_normal_text(block):
+            
+                # ===== 正文 =====
+                if text:
+                    content.append(text)
+            
+                # ===== 图片 =====
+                imgs = extract_images_from_paragraph(block, doc)
+            
+                for img in imgs:
+                    content.append({
+                        "image": img
+                    })
+
 
         elif isinstance(block, Table) and in_topic:
             rows = [[cell.text.strip() for cell in row.cells] for row in block.rows]
