@@ -12,6 +12,20 @@ from docx.text.paragraph import Paragraph
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 BOOK_DIR = os.path.join(BASE_DIR, "data", "电子书")
 
+
+
+# =========================
+# 资料列表（新增）
+# =========================
+def list_collections():
+    if not os.path.exists(BOOK_DIR):
+        return []
+
+    return sorted([
+        d for d in os.listdir(BOOK_DIR)
+        if os.path.isdir(os.path.join(BOOK_DIR, d))
+    ])
+
 # =========================
 # 工具：遍历段落 + 表格
 # =========================
