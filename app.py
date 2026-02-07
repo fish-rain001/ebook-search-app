@@ -61,6 +61,12 @@ def cached_global_search(all_docs, keyword):
     for p in all_docs:
         try:
             r = we.full_text_search(p, keyword)
+            collection = os.path.basename(
+                os.path.dirname(
+                    os.path.dirname(p)
+                )
+            )
+
             year = os.path.basename(os.path.dirname(p))
             issue = os.path.basename(p)
             for k in result:
@@ -76,10 +82,19 @@ def cached_global_search(all_docs, keyword):
 # ==================================================
 # Sidebar：文档选择
 # ==================================================
+collections = we.list_collections()
+
+if not collections:
+    st.error("未检测到任何资料库")
+    st.stop()
+
+collection = st.selectbox("选择资料", collections)
+
 with st.sidebar:
     st.header("📂 文档选择")
 
-    years = we.list_years()
+    years = we.list_years(collection)
+
     if not years:
         st.error("未检测到 data/电子书")
         st.stop()
@@ -91,7 +106,8 @@ with st.sidebar:
     )
     year = st.selectbox("选择年份", years, index=years.index(year))
 
-    issues = we.list_issues(year)
+    issues = we.list_issues(collection, year)
+
     if not issues:
         st.warning("该年份无期刊")
         st.stop()
@@ -103,7 +119,7 @@ with st.sidebar:
     )
     issue = st.selectbox("选择期刊", issues, index=issues.index(issue))
 
-    doc_path = we.find_doc_path(year, issue)
+    doc_path = we.find_doc_path(collection, year, issue)
     if not doc_path:
         st.error("未找到 Word")
         st.stop()
