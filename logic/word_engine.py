@@ -65,27 +65,46 @@ def list_years(collection):
     )
 
 
-def list_issues(year):
-    year_dir = os.path.join(BOOK_DIR, f"{year}年")
+def list_issues(collection, year):
+    year_dir = os.path.join(
+        BOOK_DIR,
+        collection,
+        f"{year}年"
+    )
+
+    if not os.path.exists(year_dir):
+        return []
+
     issues = set()
+
     for f in os.listdir(year_dir):
         if f.endswith(".docx"):
             m = re.match(r"(第[一二三四五六七八九十\d]+期|第\d+号)", f)
             if m:
                 issues.add(m.group(1))
+
     return sorted(list(issues))
 
-def find_doc_path(year, issue):
-    year_dir = os.path.join(BOOK_DIR, f"{year}年")
+
+def find_doc_path(collection, year, issue):
+    year_dir = os.path.join(
+        BOOK_DIR,
+        collection,
+        f"{year}年"
+    )
+
     patterns = [
         f"*{issue}*.docx",
         f"*{issue.replace('：','').replace(':','')}*.docx"
     ]
+
     for p in patterns:
         files = glob.glob(os.path.join(year_dir, p))
         if files:
             return files[0]
+
     return None
+
 
 # =========================
 # 专栏（标题1）
